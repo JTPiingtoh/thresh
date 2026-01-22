@@ -1,0 +1,8 @@
+[project]
+name = "thresh"
+version = "0.0.1"
+
+
+[build-system]
+requires = ["hatchling >= 1.26"]
+build-backend = "hatchling.build"

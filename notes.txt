@@ -1,0 +1,25 @@
+
+    "league_v4_entries" : RiotAPI("League-V4-entries"), # obtain puuids,
+    "match-v5_by_puuid" : RiotAPI("match-v5-puuid"), # obtain match ids from puuids
+    "match-v5_by_match_id" : RiotAPI("match-v5-entries) # obtain match data from match ids
+
+
+
+# pipline will allow queries to the cache, local storage and the API
+
+import thresh
+from thresh.datastore import CacheStore, LocalStore, APIStore
+from thresh.clients import RiotAPIClient
+
+
+
+pipe = RiotAPIPipeline(
+
+
+)
+
+thresh.create_pipeline(pipe)
+
+
+async with RiotAPIClient() as client:
+    matches = await client.get_league_exp_v4()
