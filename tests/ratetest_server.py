@@ -18,7 +18,7 @@ app = Flask(__name__)
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["1000 per 12 seconds"],
+    default_limits=["20 per 1 seconds"],
     storage_uri="memory://",
     strategy="fixed-window",
     headers_enabled=True,

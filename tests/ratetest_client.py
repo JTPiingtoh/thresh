@@ -9,11 +9,13 @@ from thresh.ratelimiter import LeakyBucket
 
 
 URL = "http://127.0.0.1:5000"
-request_num = 2000
+request_num = 200000
 
 # requests:second, same as test_server rate_limit
-bucket = LeakyBucket(rate=1000/12, tolerance=0.01)
+bucket = LeakyBucket(rate=20/1, tolerance=0.01)
 
+start = time.time()
+end = 0
 
 for i in range(request_num):
 
@@ -27,8 +29,13 @@ for i in range(request_num):
     response = requests.get(URL)
     if response.status_code == 429:
         print("Got 429!")
+        end = time.time()
+        print(end - start)
+        break
 
     print(f"requests remaining: {response.headers["X-My-Remaining"]}")
+
+
 
 
 
