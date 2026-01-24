@@ -9,57 +9,85 @@
 import time
 from math import ceil
 import requests
-import redis
+import pickle
+from functools import cached_property
 
 
-class Endpoint_rates():
-
-    """
-    Prototype class for check an endpoint's ratelimits, and storing it in memory. 
-    """
-    def __init__(self):
-        self.url = "http://127.0.0.1:5000"
-
-    def ping(self):
-        response = requests.get(self.url)
-        rate = 
-
-    # TODO: factor in ping to lct
+# Implements the gloabal state of the endpoints bucket using context management
+class API_Key_Bucket_state():
 
 
-# Implements the gloabal state of the endpoints bucket
-class Global_Bucket_state(Endpoint_rates):
-    """
+    def _get_api_rate(self):
+        response = requests.get(self._url)
 
-    """
-    def __init__(self):
-        self.url = "http://127.0.0.1:5000"
+        # TODO: Make this key part of a global dataclass the riot API speficically
+        # TODO: current form matches local flask test server: remap to RIOT API
+        requests_per, seconds = response.headers["X-App-Rate-Limit"].split(":")
+        return float(requests_per) / float(seconds)
 
 
+    def __enter__(self):
+        self._url = "http://127.0.0.1:5000"
 
+        # check cache for previous bucket state, compare to api rate
+        try:
+            with open("API_Key_Bucket_state.pkl", "rb") as file:
+                self.bucket = pickle.load(file)
+                if not self.bucket.accept_request():
+                    # TODO: Kill process and log errors
+                    raise RuntimeError("429 occured when pinging!")
+
+                current_rate = self._get_api_rate()                
+                if self.bucket.rate != current_rate:
+                    self.bucket = LeakyBucket(rate=current_rate)
+
+        except FileNotFoundError:
+            self.bucket = LeakyBucket(rate=self._get_api_rate())
+
+        return self.bucket
+
+    def __exit__(self, *_):
+        with open("API_Key_Bucket_state.pkl", "wb") as file:
+            pickle.dump(self.bucket, file)
+
+        return False
+
+    
+    
+    # TODO store rate cache
+
+    
+    def _update_state(self):
+        rate = self._get_api_rate()
+        self._rate = rate
+
+    
 
 class LeakyBucket():
 
     """
-    initiated from the global bucekt state
+    initiated from the global bucket state
     """
     def __init__(
         self,
-        rate: str | float = "100:120",
+        rate: str | float = 100/120,
         tolerance: int = 0
         ):
 
         # TODO: add checks for ints
 
-        if isinstance(rate, str):
-            try:
-                requests_per, seconds = rate.split(":")
-                self.capacity = int(seconds) / int(requests_per)
-            except ValueError:
-                raise ValueError(f"Expected ratio like '100:120', got {rate}")
-        else:
-            # TODO T aka capacity is not rate, it is a length of time
-            self.capacity = 1 / rate
+        # if isinstance(rate, str):
+        #     try:
+        #         requests_per, seconds = rate.split(":")
+        #         self.capacity = int(seconds) / int(requests_per)
+        #     except ValueError:
+        #         raise ValueError(f"Expected ratio like '100:120', got {rate}")
+        # else:
+        #     # TODO T aka capacity is not rate, it is a length of time
+        #     self.capacity = 1 / rate
+
+        self.rate = rate
+        self.capacity = 1 / rate
 
         if tolerance > self.capacity:
             raise ValueError(f"tolerance must be less than capacity (T). Got tolerance: {tolerance}, capacity: {self.capacity}")
@@ -68,19 +96,14 @@ class LeakyBucket():
         self.value = 0
         self.last_conforming_time = time.time()
         
-        self._redis_instance = redis.Redis(decode_responses=True)
-        self._redis_winlen_key = "thresh:LeakyBucket:1:winlen" # length of the window
-        self._redis_winstart_key = "thresh:LeakyBucket:1:winlen" # start of the last window
+        
+        
 
     # Leaky bucket seems to only be able to handle around 563 requests per second as of v0.0.1
 
-    def _set_window_start(self):
-        self._redis_instance.set(self._redis_winstart_key, time.time())
-
-
-    def _get_window_start(self):
-        return self._redis_instance.get(self._redis_winstart_key)
-
+    def set_state(self, aux_value, arrival_time):
+        self.value = max(0, aux_value) + self.capacity
+        self.last_conforming_time = arrival_time
 
     def accept_request(self):
 
@@ -94,6 +117,8 @@ class LeakyBucket():
             self.value = max(0, aux_value) + self.capacity
             self.last_conforming_time = arrival_time
             return True
+
+
 
 
 
