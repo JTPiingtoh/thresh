@@ -4,21 +4,22 @@
 
 #########################################
 
+# TODO: replicate riot api rate limits in more detail
+
 from __future__ import annotations 
 
-from flask import Flask
+from flask import Flask, Response
 from flask_limiter import Limiter, HeaderNames
 from flask_limiter.util import get_remote_address
 
-import flask_limiter
-
-
+requests = 10
+per_second = 12
 
 app = Flask(__name__)
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["20 per 1 seconds"],
+    default_limits=[f"{requests} per {per_second} seconds"],
     storage_uri="memory://",
     strategy="fixed-window",
     headers_enabled=True,
@@ -35,5 +36,9 @@ limiter = Limiter(
 @app.route("/")
 def index():
 
+  response = Response()
+  response.headers["X-App-Rate-Limit"] = f"{requests}:{per_second}"
+  
 
-  return "Awesome league data!"
+
+  return response

@@ -2,16 +2,47 @@
 
 # TODO application rate limit: Global rate limiter for the API Key. All Clients need to share a single instance of this class
 # TODO method rate limit: Rate limit for each API endpoint. Each endpoit get methid will need to invoke an instance of this class
+
 # TODO clients need to know whether their API call window is is sync with the server's view
-# TODO need to account in sync differences between client and server
+
 
 import time
+from math import ceil
+import requests
+import redis
 
-from math import floor
+
+class Endpoint_rates():
+
+    """
+    Prototype class for check an endpoint's ratelimits, and storing it in memory. 
+    """
+    def __init__(self):
+        self.url = "http://127.0.0.1:5000"
+
+    def ping(self):
+        response = requests.get(self.url)
+        rate = 
+
+    # TODO: factor in ping to lct
+
+
+# Implements the gloabal state of the endpoints bucket
+class Global_Bucket_state(Endpoint_rates):
+    """
+
+    """
+    def __init__(self):
+        self.url = "http://127.0.0.1:5000"
+
+
+
 
 class LeakyBucket():
 
-    """"""
+    """
+    initiated from the global bucekt state
+    """
     def __init__(
         self,
         rate: str | float = "100:120",
@@ -36,15 +67,28 @@ class LeakyBucket():
         self.tolerance = tolerance
         self.value = 0
         self.last_conforming_time = time.time()
+        
+        self._redis_instance = redis.Redis(decode_responses=True)
+        self._redis_winlen_key = "thresh:LeakyBucket:1:winlen" # length of the window
+        self._redis_winstart_key = "thresh:LeakyBucket:1:winlen" # start of the last window
+
+    # Leaky bucket seems to only be able to handle around 563 requests per second as of v0.0.1
+
+    def _set_window_start(self):
+        self._redis_instance.set(self._redis_winstart_key, time.time())
+
+
+    def _get_window_start(self):
+        return self._redis_instance.get(self._redis_winstart_key)
 
 
     def accept_request(self):
 
         arrival_time = time.time()
-        aux_value = self.value - (arrival_time - self.last_conforming_time)
+        aux_value = self.value - (arrival_time - self.last_conforming_time) 
 
         # between the first and second request, this is prematurely computing to false
-        if aux_value > self.tolerance:
+        if ceil(aux_value * self.capacity) / self.capacity > self.tolerance:
             return False
         else:
             self.value = max(0, aux_value) + self.capacity

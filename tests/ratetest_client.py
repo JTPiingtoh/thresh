@@ -7,12 +7,13 @@ import random
 
 from thresh.ratelimiter import LeakyBucket
 
+# TODO: implement async client
 
 URL = "http://127.0.0.1:5000"
 request_num = 200000
 
 # requests:second, same as test_server rate_limit
-bucket = LeakyBucket(rate=20/1, tolerance=0.01)
+bucket = LeakyBucket(rate=10/12, tolerance=0)
 
 start = time.time()
 end = 0
@@ -20,7 +21,6 @@ end = 0
 for i in range(request_num):
 
     time.sleep(0.001)
-   
 
     if not bucket.accept_request():
         # print("rejected")
@@ -34,6 +34,10 @@ for i in range(request_num):
         break
 
     print(f"requests remaining: {response.headers["X-My-Remaining"]}")
+
+
+response = requests.get(URL)
+
 
 
 
