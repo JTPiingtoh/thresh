@@ -4,7 +4,7 @@
 # TODO method rate limit: Rate limit for each API endpoint. Each endpoit get methid will need to invoke an instance of this class
 
 # TODO clients need to know whether their API call window is is sync with the server's view
-
+import deprecated
 
 import time
 from math import ceil
@@ -46,15 +46,11 @@ class API_Key_Bucket_state():
 
         return self.bucket
 
+
     def __exit__(self, *_):
         with open("API_Key_Bucket_state.pkl", "wb") as file:
             pickle.dump(self.bucket, file)
-
         return False
-
-    
-    
-    # TODO store rate cache
 
     
     def _update_state(self):
@@ -63,6 +59,9 @@ class API_Key_Bucket_state():
 
     
 
+
+
+@deprecated
 class LeakyBucket():
 
     """
@@ -95,8 +94,7 @@ class LeakyBucket():
         self.tolerance = tolerance
         self.value = 0
         self.last_conforming_time = time.time()
-        
-        
+              
         
 
     # Leaky bucket seems to only be able to handle around 563 requests per second as of v0.0.1

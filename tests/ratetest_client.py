@@ -5,7 +5,7 @@ import time
 
 import random
 
-from thresh.ratelimiter import API_Key_Bucket_state
+from thresh.clients import RiotAPIClient
 
 # TODO: implement async client
 
@@ -15,7 +15,7 @@ from thresh.ratelimiter import API_Key_Bucket_state
 URL = "http://127.0.0.1:5000"
 request_num = 200000
 
-with API_Key_Bucket_state() as bucket:
+with RiotAPIClient() as client:
 
     for i in range(request_num):
 

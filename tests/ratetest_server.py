@@ -32,13 +32,10 @@ limiter = Limiter(
 )
 
 
-
 @app.route("/")
 def index():
 
   response = Response()
   response.headers["X-App-Rate-Limit"] = f"{requests}:{per_second}"
   
-
-
   return response
