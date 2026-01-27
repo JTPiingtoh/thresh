@@ -1,25 +1,8 @@
 
-    "league_v4_entries" : RiotAPI("League-V4-entries"), # obtain puuids,
-    "match-v5_by_puuid" : RiotAPI("match-v5-puuid"), # obtain match ids from puuids
-    "match-v5_by_match_id" : RiotAPI("match-v5-entries) # obtain match data from match ids
+    with RiotAPIClient() as client:
+        options = client.endpoint_0(...)
+        results = []
+        results.append(client.endpoint_1.(option))
 
-
-
-# pipline will allow queries to the cache, local storage and the API
-
-import thresh
-from thresh.datastore import CacheStore, LocalStore, APIStore
-from thresh.clients import RiotAPIClient
-
-
-
-pipe = RiotAPIPipeline(
-
-
-)
-
-thresh.create_pipeline(pipe)
-
-
-async with RiotAPIClient() as client:
-    matches = await client.get_league_exp_v4()
+# the key issue with this format is there is no way the client can know what the next 
+# task should be, unless options are supplied as a list

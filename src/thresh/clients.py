@@ -1,4 +1,5 @@
 import requests
+from requests.exceptions import HTTPError
 import pickle
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -42,13 +43,15 @@ class RiotAPIClient():
     def get_data_from_test_api(self, dummy_option):
         URL = "http://127.0.0.1:5000"
 
-        urls = [URL for _ in range(n_requests)]
+        buffer = RingBuffer(100)
 
         # TODO: add 
-        for urls in urls:
-            if not self.rate_limiter.acceptable_request():
-                continue
-            
+    
+        if not self.rate_limiter.acceptable_request():
+            # add to ring buffer
+            ...
+        
+        try:
             response = requests.get(URL)
             response.raise_for_status()
 
@@ -58,7 +61,12 @@ class RiotAPIClient():
             if self.rate_limiter.get_rate() != rate:
                 self.rate_limiter.set_rate(rate)
 
-            yield response
+        except HTTPError as e:
+            print(f"HTTPError: {e}")
+        except KeyError as e:
+            print(e)
+
+        return response
 
     
     def __exit__(self, exc_type, exc_value, traceback):
