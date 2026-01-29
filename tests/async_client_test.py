@@ -1,11 +1,11 @@
 import aiohttp
 import asyncio
 
-from thresh._ratelimiters import _RiotAPILimiter
+from thresh.ratelimiters import RiotAPILimiter
 
 URL = "http://127.0.0.1:5000"
 
-limiter = _RiotAPILimiter(10/12)
+limiter = RiotAPILimiter(100/120)
 
 async def handle_request(url, data_list: list):
     async with aiohttp.ClientSession() as session:
@@ -20,7 +20,7 @@ async def handle_request(url, data_list: list):
 async def main():
         
         data_list = []
-        urls = [URL] * 50
+        urls = [URL] * 10
 
         async with asyncio.TaskGroup() as tg:
             for url in urls:
@@ -29,7 +29,6 @@ async def main():
                 task = tg.create_task(handle_request(URL, data_list))
 
         print(data_list)
-                    
                 
 
 

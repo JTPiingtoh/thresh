@@ -12,8 +12,8 @@ from flask import Flask, Response
 from flask_limiter import Limiter, HeaderNames
 from flask_limiter.util import get_remote_address
 
-requests = 10
-per_second = 12
+requests = 100
+per_second = 120
 
 app = Flask(__name__)
 limiter = Limiter(
