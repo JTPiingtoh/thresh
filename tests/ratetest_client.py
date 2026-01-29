@@ -21,7 +21,7 @@ with RiotAPIClient() as client:
 
         time.sleep(0.001)
 
-        if not bucket.accept_request():
+        if not client.accept_request():
             # print("rejected")
             continue
 
