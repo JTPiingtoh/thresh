@@ -12,14 +12,20 @@ from flask import Flask, Response
 from flask_limiter import Limiter, HeaderNames
 from flask_limiter.util import get_remote_address
 
-requests = 100
-per_second = 120
+slow_requests = 100
+slow_per_second = 120
+
+fast_requests = 20
+fast_per_second = 1
 
 app = Flask(__name__)
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=[f"{requests} per {per_second} seconds"],
+    default_limits=[
+      f"{slow_requests} per {slow_per_second} seconds",
+      f"{fast_requests} per {fast_per_second} seconds"
+    ],
     storage_uri="memory://",
     strategy="fixed-window",
     headers_enabled=True,
@@ -32,12 +38,14 @@ limiter = Limiter(
 )
 
 
+
+response = Response()
+response.headers["X-App-Rate-Limit"] = f"{slow_requests}:{slow_per_second}, {fast_requests}:{fast_per_second}"
+  
+
 @app.route("/")
 def index():
 
-  response = Response()
-  response.headers["X-App-Rate-Limit"] = f"{requests}:{per_second}"
-  
-  return "hello"
+  return "index"
 
 
