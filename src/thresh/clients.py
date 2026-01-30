@@ -3,17 +3,17 @@ from requests.exceptions import HTTPError
 import pickle
 from dataclasses import dataclass
 from http import HTTPStatus
+import aiohttp
 
 HTTPStatus.TOO_MANY_REQUESTS
 
-from thresh.ratelimiters import LeakyBucket
-from thresh._datastructures import RingBuffer
+from thresh.ratelimiters import RiotAPILimiter
 
 _DEFAULT_RATE = 100/120
 
 @dataclass
 class ClientRateLimiterKeys:
-    LEAKYBUCKET = "Client_LBucket_1.pkl"
+    RIOT_API_RATELIMITER_KEY = "Client_RiotAPI_RLimiter_1.pkl"
 
 
 class RiotAPIClient():
@@ -30,26 +30,21 @@ class RiotAPIClient():
                 self.rate_limiter = pickle.load(file)
 
         except FileNotFoundError:
-            self.rate_limiter = LeakyBucket(rate=_DEFAULT_RATE, tolerance=0)
+            self.rate_limiter = RiotAPILimiter(rate=_DEFAULT_RATE, tolerance=0)
 
-
-        self.buffer = RingBuffer
         self.pipeline = ...
 
         return self
         
 
-    # TODO: make this into a async generator object?
-    def get_data_from_test_api(self, dummy_option):
+    # TODO: either needs to take a single option, or a list of options
+    # If a list, create a task group and return the data in a suitable data
+    # structure
+    async def get_data_from_test_api(self, dummy_option):
+
         URL = "http://127.0.0.1:5000"
-
-        buffer = RingBuffer(100)
-
-        # TODO: add 
     
-        if not self.rate_limiter.acceptable_request():
-            # add to ring buffer
-            ...
+        await self.rate_limiter._acceptable_request()
         
         try:
             response = requests.get(URL)
@@ -58,6 +53,7 @@ class RiotAPIClient():
             requests_per, seconds = response.headers["X-App-Rate-Limit"].split(":")
             rate = float(requests_per) / float(seconds)
 
+            # assumes that the window has not changed
             if self.rate_limiter.get_rate() != rate:
                 self.rate_limiter.set_rate(rate)
 
@@ -75,7 +71,10 @@ class RiotAPIClient():
         return False
 
 
+    async def asnyc_get_data_from_test_api(options):
+        URL = "http://127.0.0.1:5000"
 
+        await requests.get(URL)
 
     # async def get_league_matches_exp_v4_by_queue_tier_division(
     #         self,
