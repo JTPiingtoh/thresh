@@ -10,8 +10,6 @@ from thresh.clients import RiotAPIClient
 # TODO: implement async client
 
 
-
-
 URL = "http://127.0.0.1:5000"
 request_num = 200000
 
