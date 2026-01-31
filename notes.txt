@@ -1,8 +1,14 @@
 
-    with RiotAPIClient() as client:
-        options = client.endpoint_0(...)
-        results = []
-        results.append(client.endpoint_1.(option))
+with RiotAPIClient() as client:
+    options = client.endpoint_0(...)
+    results = []
+    results.append(client.endpoint_1.(option))
 
 # the key issue with this format is there is no way the client can know what the next 
 # task should be, unless options are supplied as a list
+
+
+async with RiotAPIClient() as client:
+    results: APISchema = await client.endpoint_0(...)
+
+    results_2 = await client.endpoint_1(results["key"])

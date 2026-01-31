@@ -23,14 +23,14 @@ class RiotAPIClient():
 
     def __enter__(self):
 
-        # check cache for previous bucket state, compare to api rate
+        # check pickle cache for previous bucket state, compare to api rate
         # TODO: replace pickle with in-house caching
         try:
             with open(ClientRateLimiterKeys.LEAKYBUCKET, "rb") as file:
                 self.rate_limiter = pickle.load(file)
 
         except FileNotFoundError:
-            self.rate_limiter = RiotAPILimiter(rate=_DEFAULT_RATE, tolerance=0)
+            self.rate_limiter = RiotAPILimiter(rate=_DEFAULT_RATE)
 
         self.pipeline = ...
 
@@ -44,7 +44,7 @@ class RiotAPIClient():
 
         URL = "http://127.0.0.1:5000"
     
-        await self.rate_limiter._acceptable_request()
+        await self.rate_limiter.acceptable_request()
         
         try:
             response = requests.get(URL)
@@ -71,17 +71,22 @@ class RiotAPIClient():
         return False
 
 
-    async def asnyc_get_data_from_test_api(options):
-        URL = "http://127.0.0.1:5000"
+    async def asnyc_get_data_from_test_api(self, options):
+        TEST_URL = "http://127.0.0.1:5000"
+        
 
-        await requests.get(URL)
+        async with aiohttp.ClientSession() as session:
+            await self.rate_limiter.acceptable_request()
+            async with session.get(TEST_URL) as resp:
 
-    # async def get_league_matches_exp_v4_by_queue_tier_division(
-    #         self,
-    #         region,
-    #         page,
-    #         queue,
-    #         tier,
-    #         division
-    #         ):
-    #     return await self.get(f"https://{region}.api.riotgames.com/lol/league-exp/v4/entries/{queue}/{tier}/{division}?page={page}")
+                if resp.status == 429:
+                    raise aiohttp.ClientResponseError(status=resp.status)
+
+                rate1, rate2 = resp.headers["X-App-Rate-Limit"]
+
+                self._rate_limiter # ...
+                
+
+                return resp.content
+
+

@@ -4,7 +4,6 @@ import asyncio
 
 from thresh._ratelimiters import _LeakyBucket
 
-
 class RiotAPILimiter():
     def __init__(
     self,
@@ -16,7 +15,7 @@ class RiotAPILimiter():
         self._last_conforming_time = 0.0
 
 
-    async def _acceptable_request(self):
+    async def acceptable_request(self):
         time_since_last_sent = time.time() - self._last_conforming_time
         
         # if interval is greater than capacity, wait, then send request
@@ -25,6 +24,10 @@ class RiotAPILimiter():
         self._last_conforming_time = time.time()
 
         return True
+    
+    # will tell the client how long to wait, given the context of the request
+    async def wait_for(self, ratelimit_middleware):
+        ...
 
 
 

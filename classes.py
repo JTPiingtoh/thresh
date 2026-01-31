@@ -37,10 +37,12 @@ def get_league_v4_entries_by_queue_tier_division(
     response = handle_request(url=request_url, method='get', params=request_params)
     return response.json()
 
-async def get_league_v4_entries_by_queue_tier_division_pages(
-        pages: int,
-        region: str, 
-        queue : str = "RANKED_SOLO_5x5", 
-        tier: str = "CHALLENGER", 
-        division: str = "I"
-    ):
+# async def get_league_v4_entries_by_queue_tier_division_pages(
+#         pages: int,
+#         region: str, 
+#         queue : str = "RANKED_SOLO_5x5", 
+#         tier: str = "CHALLENGER", 
+#         division: str = "I"
+#     ):
+
+#     pass
