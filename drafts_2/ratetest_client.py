@@ -5,7 +5,7 @@ import time
 
 import random
 
-from thresh.clients import RiotAPIClient
+from drafts_1.clients import RiotAPIClient
 
 # TODO: implement async client
 

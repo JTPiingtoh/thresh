@@ -1,6 +1,0 @@
-
-
-class DtoObject(dict):
-    pass
-
-
