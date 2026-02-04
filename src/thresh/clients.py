@@ -10,14 +10,17 @@ class RiotAPIClient():
 
     _session: Final
 
-    def __init__(self, session):
+    def __init__(self, session: aiohttp.ClientSession):
         self._session = session
+        
 
     @classmethod
     @asynccontextmanager
-    async def connect(cls) -> AsyncIterator:
+    async def connect(cls, session: aiohttp.ClientSession | None = None) -> AsyncIterator:
 
-        session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+        if session == None:
+            session: aiohttp.ClientSession = aiohttp.ClientSession()
         try:
             yield cls(session) 
         finally:
@@ -25,28 +28,38 @@ class RiotAPIClient():
 
             all_is_lost: asyncio.Event = create_aiohttp_closed_event(session)
             await all_is_lost.wait()
+            await session.close()
 
-                    
+
 
     async def get_from_test_url(self):
-        await asyncio.sleep(0)
+
+        session: aiohttp.ClientSession = self._session
+
+        async with session.get("http://127.0.0.1:5000") as resp:
+            return await resp.text()
+
+
 
 
 
 if __name__ == "__main__":
 
-    # BUG: causes ubclosed client session
+
+    # init and connect are called
     async def main():
-        async with RiotAPIClient.connect() as client:
-            # await client.get_from_test_url()
-            ...
+        async with RiotAPIClient.connect() as riot_client:
+            
+            _ = await riot_client.get_from_test_url()
+            
 
+    # init is called
+    # BUG: does not call connect()
     async def main2():
-
         async with aiohttp.ClientSession() as session:
-            client = RiotAPIClient(session=session)
-            # await client.get_from_test_url()
-            ...
+            riot_client = RiotAPIClient(session=session)
+            _ = await riot_client.get_from_test_url()
+            
 
 
-    asyncio.run(main2())
+    asyncio.run(main2(), debug=True)
