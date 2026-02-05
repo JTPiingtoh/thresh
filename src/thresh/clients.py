@@ -36,8 +36,11 @@ class RiotAPIClient():
 
         session: aiohttp.ClientSession = self._session
 
-        async with session.get("http://127.0.0.1:5000") as resp:
-            return await resp.text()
+        url = "http://127.0.0.1:5000"
+
+        # response = Handler().handle()
+
+        # self.handler(...).handle_request(...)
 
 
 
