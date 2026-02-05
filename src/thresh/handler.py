@@ -14,13 +14,15 @@ class RequestHandler():
 
     def __init__(self, url: str, rate_limiter : RiotAPILimiter, session: aiohttp.ClientSession):
         self._url = url
-        self._rate_limiter = rate_limiter
         self._session = session
     
     async def handle_request(self):
 
         session: aiohttp.ClientSession = self._session
+        middlewares = []
+        middlewares.append(RiotAPILimiter(requests=100, window_size=120))
 
+        session.get(self._url, middlewares=[])
         # TODO: make any other state illegal
         await self._rate_limiter.acceptable_request()
         
