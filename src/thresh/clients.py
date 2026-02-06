@@ -2,17 +2,19 @@ import aiohttp
 import asyncio
 
 from contextlib import asynccontextmanager
-
 from typing import Final, AsyncIterator
 
+from thresh.ratelimiters import RiotAPILimiter
 
 class RiotAPIClient():
 
     _session: Final
+    _rate_limiter: Final
 
     def __init__(self, session: aiohttp.ClientSession):
         self._session = session
-        
+        self._rate_limiter: RiotAPILimiter = RiotAPILimiter()
+    
 
     @classmethod
     @asynccontextmanager

@@ -2,32 +2,51 @@ import pickle
 import time
 import asyncio
 from dataclasses import dataclass
+from contextlib import contextmanager
+from typing import Final
+from aiohttp import ClientRequest, ClientHandlerType, ClientResponse
 
 @dataclass
-class ClientRateLimiterKeys:
-    RIOT_API_RATELIMITER_KEY = "Client_RiotAPI_RLimiter_1.pkl"
+class THRESHKEYS:
+    RIOT_API_RATELIMITER_KEY: Final[str]  = "Client_RiotAPI_RLimiter_1"
+
+@dataclass
+class RiotAPILimiterState:
+    pass
+
+
+# TODO: make threadsafe
+limiter_state_cache = {}
+
 
 class RiotAPILimiter():
-    def __init__(
-    self,
-    requests: int = 100,
-    window_size: int = 120
-    ):
-
-        self._seconds_per_request: float = 1 / ( float(requests) / float(window_size) )
+    def __init__(self):
+        self._seconds_per_request: float = 0
         self._last_conforming_time: float = 0.0
-        self._window_size: int = window_size
+        self._window_size: int = 0
         self._window_count: int = 0
+        self._invoked = False
 
 
-    def set_state(self, limit_counts: str, rate_limits: str):
+    @contextmanager
+    def invoke_limiter(self):
+        self._invoked = True
+        self._load_and_set_state()
+        try:
+            yield self
+        finally:
+            self._invoked = False
+            self._save_state()
+
+
+    def _set_state(self, limit_counts: str, rate_limits: str) -> None:
         
         # find slowest rate
         rates: list[float] = []
         window_sizes: list[float] = []
         for rate_limit in rate_limits.split(","):
             requests, per_second = rate_limit.split(":")
-            rates.append(float(requests / float(per_second)))
+            rates.append(float(requests) / float(per_second))
             # keep window sizes as an int
             window_sizes.append(int(per_second))
 
@@ -38,12 +57,38 @@ class RiotAPILimiter():
         self._window_size = window_sizes[slowest_rate_index]
         self._window_count: int = limit_counts.split(",")[slowest_rate_index][0]
 
-    async def request_accepted(self):
+
+    def _save_state(self) -> None:
+
+        def create_state():
+            save = RiotAPILimiterState()
+            for name, value in self.__dict__.items():
+                setattr(save, name, value)
+            return save
+
+        limiter_state_cache[THRESHKEYS.RIOT_API_RATELIMITER_KEY] = create_state()
+    
+
+    def _load_and_set_state(self) -> None:
+
+        try:
+            load: RiotAPILimiterState = limiter_state_cache[THRESHKEYS.RIOT_API_RATELIMITER_KEY]
+            for name, value in load.__dict__.items():
+                setattr(self, name, value)
+
+        except KeyError:
+            # will defer to __init__() values
+            pass
+
+        
+    async def _acceptable_request(self):
         '''
         Delays execution until request is within rate limit.
 
         :param self: 
         '''
+        if not self._invoked:
+            raise RuntimeError("Rate limiter can only test requests once")
         time_since_last_sent = time.time() - self._last_conforming_time
         
         # if interval is greater than capacity, wait, then send request
@@ -53,9 +98,15 @@ class RiotAPILimiter():
 
         return True
     
-    # will tell the client how long to wait, given the context of the request
-    async def wait_for(self, ratelimit_middleware):
-        ...
+    
+    async def __call__(
+        self, req: ClientRequest, handler: ClientHandlerType
+    ) -> ClientResponse:
+        await self._acceptable_request()
+        resp = await handler(req)
+        # set the state of the limiter based on the response headers.
+
+        return resp
 
     
 
