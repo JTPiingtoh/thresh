@@ -50,13 +50,7 @@ def random_limit():
     global last_slowed
     now = time.time()
 
-    
-
-    if now - last_slowed <= 10:
-        return "5 per 120 seconds, 40 per 120 seconds"
-
-    if random.randrange(5) == 0:
-        last_slowed = now
+    if now - last_slowed <= 10 and random.randrange(5) == 0:
         return "5 per 120 seconds, 40 per 120 seconds"
 
     return DEFAULT_LIMITS
