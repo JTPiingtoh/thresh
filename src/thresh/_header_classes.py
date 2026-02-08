@@ -14,7 +14,6 @@ if __name__ == "__main__":
 
     foo_instance_1 = Foo()
 
-    for key, value in foo_instance_1.__dict__.items():
-        print(key,value)
-    foo_instance_1.save()
+    foo_instance_1.cat = 3
+    print(foo_instance_1.cat)
 

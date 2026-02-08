@@ -18,7 +18,7 @@ class RiotAPIClient():
 
     @classmethod
     @asynccontextmanager
-    async def connect(cls, session: aiohttp.ClientSession | None = None) -> AsyncIterator:
+    async def connect(cls, session: aiohttp.ClientSession | None = None) -> AsyncIterator[RiotAPIClient]:
 
 
         if session == None:
@@ -33,17 +33,15 @@ class RiotAPIClient():
             await session.close()
 
 
+    async def handle_request(self, url):
+        session = self._session
+
+        async with self._rate_limiter.invoke() as limiter:
+            async with session.get(url, middlewares=[limiter]) as resp:
+                return resp.headers
 
     async def get_from_test_url(self):
-
-        session: aiohttp.ClientSession = self._session
-
-        url = "http://127.0.0.1:5000"
-
-        # response = Handler().handle()
-
-        # self.handler(...).handle_request(...)
-
+        return await self.handle_request("http://127.0.0.1:5000")
 
 
 
