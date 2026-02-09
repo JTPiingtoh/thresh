@@ -19,39 +19,27 @@ SLOW_PER_SECONDS = 120
 FAST_REQUESTS = 20
 FAST_PER_SECONDS = 1
 
-DEFAULT_LIMITS = [
-  f"{SLOW_REQUESTS} per {SLOW_PER_SECONDS} seconds",
-  f"{FAST_REQUESTS} per {FAST_PER_SECONDS} seconds"
-]
+DEFAULT_LIMITS = f"{SLOW_REQUESTS} per {SLOW_PER_SECONDS} seconds; {FAST_REQUESTS} per {FAST_PER_SECONDS} seconds"
+# quarter rate
+THROTTLED_LIMITS = f"{int(SLOW_REQUESTS / 4)} per {SLOW_PER_SECONDS} seconds; {int(FAST_REQUESTS / 4)} per {FAST_PER_SECONDS} seconds"
 
-# half rate
-THROTTLED_LIMITS = [
-  f"{int(SLOW_REQUESTS / 4)} per {SLOW_PER_SECONDS} seconds",
-  f"{int(FAST_REQUESTS / 4)} per {FAST_PER_SECONDS} seconds"
 
-]
 
 
 app = Flask(__name__)
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=DEFAULT_LIMITS,
     storage_uri="memory://",
     strategy="fixed-window",
-    headers_enabled=True,
-    header_name_mapping={
-    HeaderNames.LIMIT : "X-My-Limit",
-    HeaderNames.RESET : "X-My-Reset",
-    HeaderNames.REMAINING: "X-My-Remaining"
-  }
+    headers_enabled=True
 )
 
 # TODO: add application limit
 # https://flask-limiter.readthedocs.io/en/stable/api.html#flask_limiter.ApplicationLimit
 
 def add_app_ratelimit_headers(response: Response, cur_limits: list[RequestLimit]):
-
+  print("called")
   # TODO: add app rate limit
   
   # sort limits by rate (largest window first)
@@ -62,7 +50,9 @@ def add_app_ratelimit_headers(response: Response, cur_limits: list[RequestLimit]
   for request_limit in sorted_cur_limits:
     requests = request_limit.limit.amount 
     per_seconds = request_limit.limit.get_expiry()
-    requests_remaining = request_limit.remaining 
+    requests_remaining = request_limit.remaining
+
+    print(requests, per_seconds) 
 
     rate_limits.append(f"{requests}:{per_seconds}")    
     limit_counts.append(f"{requests - requests_remaining}:{per_seconds}")    
@@ -106,10 +96,10 @@ def random_limit():
     return throttling
   
   if is_throttled():
-    print(THROTTLED_LIMITS)
+    print("throttled")
     return THROTTLED_LIMITS
   
-  return None
+  return DEFAULT_LIMITS
 
 
 def add_method_ratelimit_headers(response: Response):
@@ -118,7 +108,8 @@ def add_method_ratelimit_headers(response: Response):
 
 
 @app.route("/")
-@limiter.limit(limit_value=random_limit)
+# @limiter.limit(limit_value=random_limit)
+@limiter.limit(random_limit)
 def index():
 
   response = make_response()

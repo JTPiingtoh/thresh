@@ -44,21 +44,20 @@ class RiotAPILimiter():
     
     def _set_state(self, limit_counts: str, rate_limits: str) -> None:
         
-        # find slowest rate
-        rates: list[float] = []
-        window_sizes: list[int] = []
-        for rate_limit in rate_limits.split(","):
-            requests, per_second = rate_limit.split(":")
-            rates.append(float(requests) / float(per_second))
-            # keep window sizes as an int
-            window_sizes.append(int(per_second))
+        # sort by lowest rate
 
-        slowest_rate: float = min(rates)
+        def get_rate(_rate_limit):
+            requests, per_second = _rate_limit.split(":")
+            return float(requests) / float(per_second)
+        
+        slowest_rate_limit = sorted(rate_limits.split(","), key = get_rate)[0]
+        slowest_rate = get_rate(slowest_rate_limit)
+
         self._seconds_per_request = 1.0 / slowest_rate
         # set window size and count according to slowest rate
-        slowest_rate_index: int = rates.index(slowest_rate)
-        self._window_size = window_sizes[slowest_rate_index]
-        self._window_count = int(limit_counts.split(",")[slowest_rate_index][0])
+        self._window_size = int(slowest_rate_limit.split(":")[1])
+
+        self._window_count = limit_counts
 
 
     async def _save_state(self) -> None:
@@ -86,7 +85,9 @@ class RiotAPILimiter():
             # will defer to __init__() values
             pass
 
-        
+    # TODO: add logic to check the number of requests remaining. If max requests reached at the window
+    # wait until start of next window
+    # TODO: add saftey around clock sync 
     async def _acceptable_request(self):
         '''
         Delays execution until request is within rate limit.
