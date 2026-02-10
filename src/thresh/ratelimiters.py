@@ -45,22 +45,26 @@ class RiotAPILimiter():
     def _set_state(self, limit_counts: str, rate_limits: str) -> None:
         
         # sort by lowest rate
+        limits_counts = list(zip(rate_limits, limit_counts))
 
-        def get_rate(_rate_limit):
-            requests, per_second = _rate_limit.split(":")
+        def get_rate(_limit_count):
+            requests, per_second = _limit_count[0].split(":")
             return float(requests) / float(per_second)
-        
-        slowest_rate_limit = sorted(rate_limits.split(","), key = get_rate)[0]
-        slowest_rate = get_rate(slowest_rate_limit)
 
-        self._seconds_per_request = 1.0 / slowest_rate
+        slowest_rate_limit, slowest_rate_count = sorted(limits_counts, key = get_rate)[0]
+
+        if slowest_rate_limit.split(":")[1] != slowest_rate_count.split(":")[1]:
+            raise RuntimeError("ratelimit window does not equal rate limit count window.")
+
+        slowest_requests, slowest_per_seconds = slowest_rate_limit.split(":")
+
+        self._seconds_per_request = 1.0 / (float(slowest_requests) / float(slowest_per_seconds))
         # set window size and count according to slowest rate
-        self._window_size = int(slowest_rate_limit.split(":")[1])
+        self._window_size = int(slowest_rate_count.split(":")[1])
+        self._window_count = int(slowest_rate_count.split(":")[0])
 
-        self._window_count = limit_counts
 
 
-    async def _save_state(self) -> None:
 
         def create_state():
             save = RiotAPILimiterState()
@@ -117,9 +121,15 @@ class RiotAPILimiter():
             
 
         # set the state of the limiter based on the response headers.
-        X_App_Rate_Limit_Count: str = resp.headers.get("X-App-Rate-Limit-Count")
-        X_App_Rate_Limit: str = resp.headers.get("X-App-Rate-Limit")
-        self._set_state(X_App_Rate_Limit_Count, X_App_Rate_Limit)
+        X_App_Rate_Limit_Count: str | None = resp.headers.get("X-App-Rate-Limit-Count")
+        X_App_Rate_Limit: str | None = resp.headers.get("X-App-Rate-Limit")
+        
+        if X_App_Rate_Limit and X_App_Rate_Limit_Count:
+            self._set_state(X_App_Rate_Limit_Count, X_App_Rate_Limit)
+        else:
+            # TODO: How should such an error change the state of the class instance?
+            raise RuntimeError(f"Recieved no ratelimit headers from API: {X_App_Rate_Limit_Count, X_App_Rate_Limit}")
+
 
         return resp
 
