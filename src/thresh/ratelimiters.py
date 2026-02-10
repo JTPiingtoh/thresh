@@ -28,8 +28,8 @@ class RiotAPILimiter():
         self._window_size: int = 0
         self._last_conforming_time: float = 0.0
         self._window_count: int = 0
-        self._invoked: bool = False
-
+        self._window_start: float = 0
+        self._wait_for: float = 0
 
     @asynccontextmanager
     async def invoke(self):
@@ -38,20 +38,20 @@ class RiotAPILimiter():
         try:
             yield self
         finally:
-            # self._invoked = False
             await self._save_state()
 
     
-    def _set_state(self, limit_counts: str, rate_limits: str) -> None:
+    def _set_state(self, rate_limit_counts: str, rate_limits: str) -> None:
         
         # sort by lowest rate
-        limits_counts = list(zip(rate_limits, limit_counts))
+        rate_limits_and_rl_counts = list(zip(rate_limits.split(","), rate_limit_counts.split(",")))
+
 
         def get_rate(_limit_count):
             requests, per_second = _limit_count[0].split(":")
             return float(requests) / float(per_second)
 
-        slowest_rate_limit, slowest_rate_count = sorted(limits_counts, key = get_rate)[0]
+        slowest_rate_limit, slowest_rate_count = sorted(rate_limits_and_rl_counts, key = get_rate)[0]
 
         if slowest_rate_limit.split(":")[1] != slowest_rate_count.split(":")[1]:
             raise RuntimeError("ratelimit window does not equal rate limit count window.")
@@ -59,12 +59,13 @@ class RiotAPILimiter():
         slowest_requests, slowest_per_seconds = slowest_rate_limit.split(":")
 
         self._seconds_per_request = 1.0 / (float(slowest_requests) / float(slowest_per_seconds))
+        self._requests_per_window = slowest_requests
         # set window size and count according to slowest rate
         self._window_size = int(slowest_rate_count.split(":")[1])
         self._window_count = int(slowest_rate_count.split(":")[0])
 
 
-
+    async def _save_state(self) -> None:
 
         def create_state():
             save = RiotAPILimiterState()
@@ -94,32 +95,35 @@ class RiotAPILimiter():
     # TODO: add saftey around clock sync 
     async def _acceptable_request(self):
         '''
-        Delays execution until request is within rate limit.
-
-        :param self: 
+        Docstring for _acceptable_request
+        
+        :param self: Description
         '''
-        if not self._invoked:
-            raise RuntimeError("Rate limiter can only test requests once invoked")
+
+
         time_since_last_sent = time.time() - self._last_conforming_time
         
         # if interval is greater than capacity, wait, then send request
         if time_since_last_sent < self._seconds_per_request:
-            await asyncio.sleep(self._seconds_per_request - time_since_last_sent)
+            await asyncio.sleep(self._wait_for + self._seconds_per_request - time_since_last_sent)
         self._last_conforming_time = time.time()
+
+
 
         return
 
-    
+    # TODO: add logic that will force a wait if count reaches limit for a given window
     async def __call__(
         self, req: ClientRequest, handler: ClientHandlerType
     ) -> ClientResponse:
         
         await self._acceptable_request()
+        time_of_request: float = time.time() # for storing window start and calculating wait_for
         resp = await handler(req)
+
         if resp.status == 429:
             raise RuntimeError("429")
             
-
         # set the state of the limiter based on the response headers.
         X_App_Rate_Limit_Count: str | None = resp.headers.get("X-App-Rate-Limit-Count")
         X_App_Rate_Limit: str | None = resp.headers.get("X-App-Rate-Limit")
@@ -129,6 +133,18 @@ class RiotAPILimiter():
         else:
             # TODO: How should such an error change the state of the class instance?
             raise RuntimeError(f"Recieved no ratelimit headers from API: {X_App_Rate_Limit_Count, X_App_Rate_Limit}")
+        
+        # check if window started
+        # TODO: This is horrible, refactor
+        if self._window_count == 1:
+            self._window_start == time_of_request
+            self._wait_for = 0
+        # check if limit reached for that window, and if so set a wait for
+        elif self._window_count == self._requests_per_window:
+            print("wait for!")
+            self._wait_for = self._window_start + self._window_size - time_of_request
+        else:
+            self._wait_for = 0
 
 
         return resp

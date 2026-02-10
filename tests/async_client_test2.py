@@ -9,7 +9,7 @@ async def main():
         try:
             for i in range(200):
                 text = await client.get_from_test_url()
-                print(text.get('X-App-Rate-Limit'))
+                print(text.get("X-App-Rate-Limit-Count"))
         except RuntimeError as e:
             print(e)
 

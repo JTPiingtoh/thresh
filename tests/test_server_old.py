@@ -13,8 +13,8 @@ from flask import Flask, Response, make_response
 from flask_limiter import Limiter, HeaderNames, RequestLimit
 from flask_limiter.util import get_remote_address
 
-SLOW_REQUESTS = 100
-SLOW_PER_SECONDS = 120
+SLOW_REQUESTS = 2
+SLOW_PER_SECONDS = 3
 
 FAST_REQUESTS = 20
 FAST_PER_SECONDS = 1
@@ -52,7 +52,7 @@ def add_app_ratelimit_headers(response: Response, cur_limits: list[RequestLimit]
     per_seconds = request_limit.limit.get_expiry()
     requests_remaining = request_limit.remaining
 
-    print(requests, per_seconds) 
+    print(requests_remaining) 
 
     rate_limits.append(f"{requests}:{per_seconds}")    
     limit_counts.append(f"{requests - requests_remaining}:{per_seconds}")    
@@ -109,7 +109,7 @@ def add_method_ratelimit_headers(response: Response):
 
 @app.route("/")
 # @limiter.limit(limit_value=random_limit)
-@limiter.limit(random_limit)
+@limiter.limit(DEFAULT_LIMITS)
 def index():
 
   response = make_response()

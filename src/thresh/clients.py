@@ -20,7 +20,6 @@ class RiotAPIClient():
     @asynccontextmanager
     async def connect(cls, session: aiohttp.ClientSession | None = None) -> AsyncIterator[RiotAPIClient]:
 
-
         if session == None:
             session: aiohttp.ClientSession = aiohttp.ClientSession()
         try:
