@@ -10,6 +10,8 @@ from typing import Final
 from aiohttp import ClientRequest, ClientHandlerType, ClientResponse
 from aiohttp.web import HTTPClientError
 
+from deprecated import deprecated
+
 @dataclass
 class THRESHKEYS:
     RIOT_API_RATELIMITER_KEY: Final[str]  = "Client_RiotAPI_RLimiter_1"
@@ -25,25 +27,19 @@ limiter_state_cache = {}
 
 # TODO: handle window edge
 
+@deprecated
 class RiotAPIBucketLimiter():
     def __init__(self):
-        ...
-
-
-    def _load_and_set_state(self) -> None:
-
-        try:
-            load: RiotAPILimiterState = limiter_state_cache[THRESHKEYS.RIOT_API_RATELIMITER_KEY]
-            for name, value in load.__dict__.items():
-                setattr(self, name, value)
-
-        except KeyError:
-            # will defer to __init__() values
-            pass
-
+        self._seconds_per_request: float = 0.0
+        self._window_size: int = 0
+        self._last_conforming_time: float = 0.0
+        self._window_count: int = 0
+        self._window_start: float = 0
+        self._wait_for: float = 0
 
     @asynccontextmanager
     async def invoke(self):
+        self._invoked = True
         self._load_and_set_state()
         try:
             yield self
@@ -79,7 +75,23 @@ class RiotAPIBucketLimiter():
         self._window_size = int(slowest_rate_count.split(":")[1])
         self._window_count = int(slowest_rate_count.split(":")[0])
 
+        # check if window started
+        # TODO: This is horrible, refactor
+        # as there is logic here that changes the state of the rate limiter, this should be moved to _set_state()
+        # check if limit reached for that window, and if so set a wait for
         
+        # 
+        if self._window_count == self._requests_per_window - 1:
+            ...
+        
+        
+        
+        elif self._window_count == self._requests_per_window:
+            self._wait_for = latest_bound + self._window_size - time.time()
+            if self._wait_for <= 0:
+                raise RuntimeError("Window upper bound should be greater than or equal to current time.")
+        else:
+            self._wait_for = 0
 
 
     async def _save_state(self) -> None:
@@ -96,15 +108,34 @@ class RiotAPIBucketLimiter():
         return
     
 
+    def _load_and_set_state(self) -> None:
+
+        try:
+            load: RiotAPILimiterState = limiter_state_cache[THRESHKEYS.RIOT_API_RATELIMITER_KEY]
+            for name, value in load.__dict__.items():
+                setattr(self, name, value)
+
+        except KeyError:
+            # will defer to __init__() values
+            pass
 
 
-
+    # TODO: add logic to check the number of requests remaining. If max requests reached at the window
+    # wait until start of next window
+    # TODO: add saftey around clock sync 
     async def _acceptable_request(self):
         '''
-        Sleep until request is witin rate limit.
+        Docstring for _acceptable_request
+        
+        :param self: Description
         '''
 
-        await asyncio.sleep(self._wait_for)
+        time_since_last_sent = time.time() - self._last_conforming_time
+        
+        # if interval is greater than capacity, wait, then send request
+        if time_since_last_sent < self._seconds_per_request:
+            await asyncio.sleep(self._wait_for + self._seconds_per_request - time_since_last_sent)
+        self._last_conforming_time = time.time()
 
         return
 
