@@ -30,12 +30,14 @@ class RiotAPIBucketLimiter():
         
         self.sync: bool = False
         self._index = ...
+        self.targets_to_update: list = []
 
 
     async def compute_wait_for(self) -> float:
 
         wait_for: float = 0
         self.sync = ...
+        # self.pinging_targets
 
         return wait_for
     
@@ -43,15 +45,43 @@ class RiotAPIBucketLimiter():
     async def sync_limiter(self, headers, request_time: float, response_time: float) -> None:
 
         # dict[
-        # tuple(scope, id, etc), limit, count, expires
+        # tuple(scope, id, etc) : tuple(limit, count, upper_bound, latency)
         # ]
 
-        # [app, 0, ...] = limit, count, expries
+        # [app, 0, ...] = limit, count, upper_bound
 
         header_limits = {
-            "app": [limit for limit, _ in rate_limit.split(":") for rate_limit in headers.get("X-App-Rate-Limit").split(",")],
-            "method": ...
+            "app": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-App-Rate-Limit").split(",")],
+            "method": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-Method-Rate-Limit").split(",")]
         }
+
+        header_counts = {
+            "app": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-App-Rate-Limit-Count").split(",")],
+            "method": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-Method-Rate-Limit-Count").split(",")]
+        }
+
+        if len(header_limits) != len(header_counts):
+            raise RuntimeError("Limit and counts headers are not of equal length")
+
+        # targets need to be updated when window is reached, or timeout has occured.
+        # expires will be when we can send the final request for that window. Therefor it must assume
+        # the window started as early as possible, ie the request_time/lower bound
+        # If the number of targets is greater than the number of rate_limits present in the headers, we have effectively lost information about that 
+        # rate limit. we should set it to a suitable conservative value and with a long window
+
+        for scope, id, *others in self.targets_to_update:
+
+            if id >= len(header_limits):
+                self._index(scope, id, *others) = (0,100,3_600,0)
+                continue
+
+            self._index[scope, id, *others] = (
+                header_limits[scope][id][0],
+                header_counts[scope][id][0],
+                header_limits[scope][id][1] + response_time,
+                response_time - request_time
+            )
+
 
         return
     
