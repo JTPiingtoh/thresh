@@ -27,86 +27,44 @@ limiter_state_cache = {}
 
 class RiotAPIBucketLimiter():
     def __init__(self):
-        ...
+        
+        self.sync: bool = False
+        self._index = ...
 
 
-    def _load_and_set_state(self) -> None:
+    async def compute_wait_for(self) -> float:
 
-        try:
-            load: RiotAPILimiterState = limiter_state_cache[THRESHKEYS.RIOT_API_RATELIMITER_KEY]
-            for name, value in load.__dict__.items():
-                setattr(self, name, value)
+        wait_for: float = 0
+        self.sync = ...
 
-        except KeyError:
-            # will defer to __init__() values
-            pass
-
-
-    @asynccontextmanager
-    async def invoke(self):
-        self._load_and_set_state()
-        try:
-            yield self
-        finally:
-            await self._save_state()
-
+        return wait_for
     
-    def _set_state(
-            self, 
-            rate_limit_counts: str, 
-            rate_limits: str,
-            earliest_bound: float,
-            latest_bound: float
-        ) -> None:
-        
-        # sort by lowest rate
-        rate_limits_and_rl_counts = list(zip(rate_limits.split(","), rate_limit_counts.split(",")))
 
-        def get_rate(_limit_count):
-            requests, per_second = _limit_count[0].split(":")
-            return float(requests) / float(per_second)
+    async def sync_limiter(self, headers, request_time: float, response_time: float) -> None:
 
-        slowest_rate_limit, slowest_rate_count = sorted(rate_limits_and_rl_counts, key = get_rate)[0]
+        # dict[
+        # tuple(scope, id, etc), limit, count, expires
+        # ]
 
-        if slowest_rate_limit.split(":")[1] != slowest_rate_count.split(":")[1]:
-            raise RuntimeError("ratelimit window does not equal rate limit count window.")
+        # [app, 0, ...] = limit, count, expries
 
-        slowest_requests, slowest_per_seconds = slowest_rate_limit.split(":")
-
-        self._seconds_per_request = 1.0 / (float(slowest_requests) / float(slowest_per_seconds))
-        self._requests_per_window = slowest_requests
-        # set window size and count according to slowest rate
-        self._window_size = int(slowest_rate_count.split(":")[1])
-        self._window_count = int(slowest_rate_count.split(":")[0])
-
-        
-
-
-    async def _save_state(self) -> None:
-
-        def create_state():
-            save = RiotAPILimiterState()
-            for name, value in self.__dict__.items():
-                setattr(save, name, value)
-
-            return save
-
-        limiter_state_cache[THRESHKEYS.RIOT_API_RATELIMITER_KEY] = create_state()
+        header_limits = {
+            "app": [limit for limit, _ in rate_limit.split(":") for rate_limit in headers.get("X-App-Rate-Limit").split(",")],
+            "method": ...
+        }
 
         return
     
 
+    async def measure_request(
+            self, req: ClientRequest, handler: ClientHandlerType
+        ) -> tuple[ClientResponse, float, float]:
 
+        request_time: float = time.time()
+        resp = handler(req)
+        response_time: float = time.time()
 
-
-    async def _acceptable_request(self):
-        '''
-        Sleep until request is witin rate limit.
-        '''
-
-        await asyncio.sleep(self._wait_for)
-
-        return
+        return (resp, request_time, response_time)
 
 
     # TODO: add logic that will force a wait if count reaches limit for a given window
@@ -114,25 +72,22 @@ class RiotAPIBucketLimiter():
         self, req: ClientRequest, handler: ClientHandlerType
     ) -> ClientResponse:
         
-        await self._acceptable_request()
-        earliest_bound: float = time.time() # for storing window start and calculating wait_for
-        resp = await handler(req)
-        latest_bound: float = time.time()
-
-        # TODO: Add wait based on header
-        if resp.status == 429:
-            raise RuntimeError("429")
-            
-        # set the state of the limiter based on the response headers.
-        X_App_Rate_Limit_Count: str | None = resp.headers.get("X-App-Rate-Limit-Count")
-        X_App_Rate_Limit: str | None = resp.headers.get("X-App-Rate-Limit")
+         
+        while True:
+            wait_for = await self.compute_wait_for()
+            if wait_for <= 0:
+                break
         
-        if X_App_Rate_Limit and X_App_Rate_Limit_Count:
-            self._set_state(X_App_Rate_Limit_Count, X_App_Rate_Limit, earliest_bound, latest_bound)
+        resp: ClientResponse 
+        
+        if self.sync:
+            # call if computer_wait_for() finds headers that need to be updated
+            request_time: float 
+            response_time: float
+            resp, request_time, response_time = await self.measure_request(handler, req)
+            self.sync_limiter(resp.headers, request_time, response_time)
         else:
-            # TODO: How should such an error change the state of the class instance?
-            raise RuntimeError(f"Recieved no ratelimit headers from API: {X_App_Rate_Limit_Count, X_App_Rate_Limit}")
-        
+            resp = await handler(req)
 
 
         return resp
