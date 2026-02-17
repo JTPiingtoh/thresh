@@ -28,7 +28,6 @@ limiter_state_cache = {}
 class RiotAPIBucketLimiter():
     def __init__(self):
         
-        self.sync: bool = False
         self._index = ...
         self.targets_to_update: list = []
 
@@ -37,12 +36,27 @@ class RiotAPIBucketLimiter():
 
         wait_for: float = 0
         self.sync = ...
-        # self.pinging_targets
+        
+        for target in [
+            ("app", 0), # TODO: add region etc
+            ("app", 1),
+            ("method", 0),
+            ("method", 1)
+        ]:
+            count, limit, window_expire, latency = self._index[target]
 
+        request_time = time.time()
+
+        if count >= limit or request_time > window_expire - latency:
+            wait_for = max(wait_for, window_expire - request_time)
+
+        if wait_for <= 0:
+            self.targets_to_update.append(target, request_time)
+            
         return wait_for
     
 
-    async def sync_limiter(self, headers, request_time: float, response_time: float) -> None:
+    async def sync_limiter(self, headers) -> None:
 
         # dict[
         # tuple(scope, id, etc) : tuple(limit, count, upper_bound, latency)
@@ -66,59 +80,46 @@ class RiotAPIBucketLimiter():
         # targets need to be updated when window is reached, or timeout has occured.
         # expires will be when we can send the final request for that window. Therefor it must assume
         # the window started as early as possible, ie the request_time/lower bound
-        # If the number of targets is greater than the number of rate_limits present in the headers, we have effectively lost information about that 
-        # rate limit. we should set it to a suitable conservative value and with a long window
+        # If the number of targets is greater than the number of rate_limits present in the headers, there
+        # we don't have info re that ratelimit, we need to give it a stasis like state 
 
-        for scope, id, *others in self.targets_to_update:
+        response_time = time.time()
 
-            if id >= len(header_limits):
-                self._index(scope, id, *others) = (0,100,3_600,0)
+        for target_key, request_time in self.targets_to_update:
+            scope, id, *others = target_key
+
+            if id >= len(header_limits[scope]):
+                self._index(scope, id, *others) = (0, 100, 3_600, 0)
                 continue
 
             self._index[scope, id, *others] = (
-                header_limits[scope][id][0],
                 header_counts[scope][id][0],
-                header_limits[scope][id][1] + response_time,
-                response_time - request_time
+                header_limits[scope][id][0],
+                header_limits[scope][id][1] + response_time, # window expires
+                response_time - request_time, # latency  
             )
 
+        self.targets_to_update = []
 
         return
     
-
-    async def measure_request(
-            self, req: ClientRequest, handler: ClientHandlerType
-        ) -> tuple[ClientResponse, float, float]:
-
-        request_time: float = time.time()
-        resp = handler(req)
-        response_time: float = time.time()
-
-        return (resp, request_time, response_time)
 
 
     # TODO: add logic that will force a wait if count reaches limit for a given window
     async def __call__(
         self, req: ClientRequest, handler: ClientHandlerType
     ) -> ClientResponse:
-        
          
         while True:
             wait_for = await self.compute_wait_for()
             if wait_for <= 0:
                 break
         
-        resp: ClientResponse 
-        
-        if self.sync:
-            # call if computer_wait_for() finds headers that need to be updated
-            request_time: float 
-            response_time: float
-            resp, request_time, response_time = await self.measure_request(handler, req)
-            self.sync_limiter(resp.headers, request_time, response_time)
-        else:
-            resp = await handler(req)
+        resp: ClientResponse = await handler(req)
 
+        if self.targets_to_update:
+            # call if computer_wait_for() finds headers that need to be updated
+            self.sync_limiter(resp.headers)
 
         return resp
 
