@@ -7,8 +7,9 @@ import asyncio
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import Final
-from aiohttp import ClientRequest, ClientHandlerType, ClientResponse
+from aiohttp import ClientRequest, ClientHandlerType, ClientResponse, ClientSession
 from aiohttp.web import HTTPClientError
+
 
 @dataclass
 class THRESHKEYS:
@@ -25,7 +26,7 @@ limiter_state_cache = {}
 
 # TODO: handle window edge
 
-class RiotAPIBucketLimiter():
+class RiotAPIRateLimiter():
     def __init__(self):
         
         self._index = ...
@@ -103,6 +104,21 @@ class RiotAPIBucketLimiter():
 
         return
     
+
+    @asynccontextmanager
+    def limit_session(self, session: ClientSession, middlewares: list):
+        middlewares.append(self)
+        self.midd
+        self.session = session
+        try:
+            yield(self)
+        finally:
+            # save state here
+            ...
+
+
+    def get(self):
+
 
 
     # TODO: add logic that will force a wait if count reaches limit for a given window

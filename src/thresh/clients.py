@@ -1,19 +1,24 @@
 import aiohttp
 import asyncio
 
-from contextlib import asynccontextmanager
-from typing import Final, AsyncIterator
+from asyncio import EventLoop
 
-from thresh.ratelimiters import RiotAPILimiter
+from contextlib import asynccontextmanager
+from typing import Final, AsyncIterator, Iterable, Generator
+
+from thresh.ratelimiters import RiotAPIRateLimiter
+from thresh.helpers import create_aiohttp_closed_event
+
+
 
 class RiotAPIClient():
 
-    _session: Final
-    _rate_limiter: Final
+    _session: Final[aiohttp.ClientSession]
+    _rate_limiter: Final[RiotAPIRateLimiter]
 
     def __init__(self, session: aiohttp.ClientSession):
         self._session = session
-        self._rate_limiter: RiotAPILimiter = RiotAPILimiter()
+        self._rate_limiter = RiotAPIRateLimiter()
     
 
     @classmethod
@@ -25,22 +30,49 @@ class RiotAPIClient():
         try:
             yield cls(session) 
         finally:
-            from thresh.helpers import create_aiohttp_closed_event
 
             all_is_lost: asyncio.Event = create_aiohttp_closed_event(session)
             await all_is_lost.wait()
             await session.close()
+            
 
 
-    async def handle_request(self, url):
+    async def handle_request(self, **kwargs):
         session = self._session
+        
+        response_object = []
 
-        async with self._rate_limiter.invoke() as limiter:
-            async with session.get(url, middlewares=[limiter]) as resp:
-                return resp.headers
+        # request_object can either be a list of dicts with a least 1 row, or a generator, yeilding dict(s) with
+        # the endpoint options
+        request_object: Iterable[dict] = [{}]
 
-    async def get_from_test_url(self):
-        return await self.handle_request("http://127.0.0.1:5000")
+        if "options" in kwargs:
+            request_object = kwargs["options"]
+            if not isinstance(request_object, Iterable):
+                raise ValueError("options must be an iterable of dicts")
+            elif isinstance(request_object, Generator):
+                pass
+            elif len(request_object) == 0:
+                return None
+            
+        else:
+            for argument, value in kwargs.items():
+                request_object.append(dict(argument, value))
+
+        # TODO: make this into a task group
+
+        async with asyncio.TaskGroup() as tg:
+            async with self._rate_limiter as limiter:
+                middlewares = []
+                middlewares.append(limiter)
+                for request in request_object: 
+                    async with session.get(request["url"], headers=request["options"], middlewares=middlewares) as resp:
+                        tg.create_task(response_object.append(await resp.text))
+
+        return response_object
+
+    async def get_from_test_url(self, region, tier, options: Iterable):
+        return await self.handle_request("http://127.0.0.1:5000", options)
 
 
 
