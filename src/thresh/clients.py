@@ -1,8 +1,6 @@
 import aiohttp
 import asyncio
 
-from asyncio import EventLoop
-
 from contextlib import asynccontextmanager
 from typing import Final, AsyncIterator, Iterable, Generator
 
@@ -23,7 +21,7 @@ class RiotAPIClient():
 
     @classmethod
     @asynccontextmanager
-    async def connect(cls, session: aiohttp.ClientSession | None = None) -> AsyncIterator[RiotAPIClient]:
+    async def connect(cls, session: aiohttp.ClientSession | None = None) -> AsyncIterator["RiotAPIClient"]:
 
         if session == None:
             session: aiohttp.ClientSession = aiohttp.ClientSession()
@@ -37,7 +35,7 @@ class RiotAPIClient():
             
 
 
-    async def handle_request(self, **kwargs):
+    async def handle_request(self, url: str, **kwargs):
         session = self._session
         
         response_object = []
@@ -59,20 +57,22 @@ class RiotAPIClient():
             for argument, value in kwargs.items():
                 request_object.append(dict(argument, value))
 
-        # TODO: make this into a task group
-
         async with asyncio.TaskGroup() as tg:
-            async with self._rate_limiter as limiter:
-                middlewares = []
-                middlewares.append(limiter)
-                for request in request_object: 
-                    async with session.get(request["url"], headers=request["options"], middlewares=middlewares) as resp:
-                        tg.create_task(response_object.append(await resp.text))
+            middlewares = []
+            middlewares.append(self._rate_limiter)
+            for request in request_object: 
+                async with session.get(url=url, headers=request, middlewares=middlewares) as resp:
+                    tg.create_task(resp.text())
 
         return response_object
 
-    async def get_from_test_url(self, region, tier, options: Iterable):
-        return await self.handle_request("http://127.0.0.1:5000", options)
+    async def get_from_test_url(
+            self, 
+            region: str | None = None, 
+            tier: str | None = None, 
+            options: Iterable | None = None
+        ):
+        return await self.handle_request(url="http://127.0.0.1:5000", options=options)
 
 
 

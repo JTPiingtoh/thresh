@@ -32,7 +32,8 @@ limiter = Limiter(
     app=app,
     storage_uri="memory://",
     strategy="fixed-window",
-    headers_enabled=True
+    headers_enabled=True,
+    application_limits=DEFAULT_LIMITS
 )
 
 # TODO: add application limit
@@ -109,7 +110,7 @@ def add_method_ratelimit_headers(response: Response):
 
 @app.route("/")
 # @limiter.limit(limit_value=random_limit)
-@limiter.limit(DEFAULT_LIMITS)
+# @limiter.limit(DEFAULT_LIMITS)
 def index():
 
   response = make_response()

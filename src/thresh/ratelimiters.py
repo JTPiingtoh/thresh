@@ -7,6 +7,8 @@ import asyncio
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import Final
+from collections import defaultdict
+
 from aiohttp import ClientRequest, ClientHandlerType, ClientResponse, ClientSession
 from aiohttp.web import HTTPClientError
 
@@ -27,9 +29,11 @@ limiter_state_cache = {}
 # TODO: handle window edge
 
 class RiotAPIRateLimiter():
+
+    _index = defaultdict(lambda:(0,0,0,0))
+
     def __init__(self):
         
-        self._index = ...
         self.targets_to_update: list = []
 
 
@@ -44,16 +48,17 @@ class RiotAPIRateLimiter():
             ("method", 0),
             ("method", 1)
         ]:
+            print(target)
             count, limit, window_expire, latency = self._index[target]
 
-        request_time = time.time()
+            request_time = time.time()
 
-        if count >= limit or request_time > window_expire - latency:
-            wait_for = max(wait_for, window_expire - request_time)
+            if count >= limit or request_time > window_expire - latency:
+                wait_for = max(wait_for, window_expire - request_time)
 
-        if wait_for <= 0:
-            self.targets_to_update.append(target, request_time)
-            
+            if wait_for <= 0:
+                self.targets_to_update.append( (target, request_time) )
+                
         return wait_for
     
 
@@ -90,7 +95,7 @@ class RiotAPIRateLimiter():
             scope, id, *others = target_key
 
             if id >= len(header_limits[scope]):
-                self._index(scope, id, *others) = (0, 100, 3_600, 0)
+                self._index[scope, id, *others] = (0, 100, 3_600, 0)
                 continue
 
             self._index[scope, id, *others] = (
@@ -117,8 +122,6 @@ class RiotAPIRateLimiter():
             ...
 
 
-    def get(self):
-
 
 
     # TODO: add logic that will force a wait if count reaches limit for a given window
@@ -135,7 +138,7 @@ class RiotAPIRateLimiter():
 
         if self.targets_to_update:
             # call if computer_wait_for() finds headers that need to be updated
-            self.sync_limiter(resp.headers)
+            await self.sync_limiter(resp.headers)
 
         return resp
 

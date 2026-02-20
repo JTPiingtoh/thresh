@@ -6,11 +6,9 @@ from thresh.clients import RiotAPIClient
 async def main():
     async with RiotAPIClient.connect() as client:
         
-        try:
-            for i in range(200):
-                text = await client.get_from_test_url()
-                print(text.get("X-App-Rate-Limit-Count"))
-        except RuntimeError as e:
-            print(e)
+        option = {"region" : "foo", "tier": "foo"}
+        options = [option for _ in range(200)]
+
+        results = await client.get_from_test_url(options=options)
 
 asyncio.run(main(), debug=True)
