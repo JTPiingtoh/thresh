@@ -48,7 +48,6 @@ class RiotAPIRateLimiter():
             ("method", 0),
             ("method", 1)
         ]:
-            print(target)
             count, limit, window_expire, latency = self._index[target]
 
             request_time = time.time()
@@ -135,7 +134,8 @@ class RiotAPIRateLimiter():
                 break
         
         resp: ClientResponse = await handler(req)
-
+        
+        print(resp.headers)
         if self.targets_to_update:
             # call if computer_wait_for() finds headers that need to be updated
             await self.sync_limiter(resp.headers)
