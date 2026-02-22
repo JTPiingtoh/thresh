@@ -7,7 +7,7 @@ from typing import Final, AsyncIterator, Iterable, Generator
 from thresh.ratelimiters import RiotAPIRateLimiter
 from thresh.helpers import create_aiohttp_closed_event
 
-
+import contextvars
 
 class RiotAPIClient():
 
@@ -28,15 +28,15 @@ class RiotAPIClient():
         try:
             yield cls(session) 
         finally:
-
             all_is_lost: asyncio.Event = create_aiohttp_closed_event(session)
+            
             await all_is_lost.wait()
             await session.close()
             
 
 
     async def handle_request(self, url: str, **kwargs):
-        session = self._session
+        
         
         response_object = []
 
@@ -57,14 +57,17 @@ class RiotAPIClient():
             for argument, value in kwargs.items():
                 request_object.append(dict(argument, value))
 
+        
+
         async with asyncio.TaskGroup() as tg:
-            middlewares = []
-            middlewares.append(self._rate_limiter)
+        
+
             for request in request_object: 
-                async with session.get(url=url, headers=request, middlewares=middlewares) as resp:
+                async with self._session.get(url=url, headers=request, middlewares=[self._rate_limiter]) as resp:
                     tg.create_task(resp.text())
 
         return response_object
+
 
     async def get_from_test_url(
             self, 

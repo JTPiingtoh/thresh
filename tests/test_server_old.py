@@ -38,6 +38,40 @@ limiter = Limiter(
 
 )
 
+def random_limit():
+
+  '''
+  Randomly throttles rate limit. Motivation is to test the client's ability to handle throttling during 
+  concurrent requests. 
+  
+  :param response: Description
+  :type response: Response
+  '''  
+
+  import time 
+  import random
+
+
+  def is_throttled():
+    global throttle_start
+    global throttling
+    now = time.time()
+
+    if not throttling and random.randint(0,5) == 0:
+      throttling = True
+      throttle_start = now
+      
+    if throttling and now - throttle_start > 10:
+      throttling = False
+
+    return throttling
+  
+  if is_throttled():
+    print("throttled")
+    return THROTTLED_LIMITS
+  
+  return DEFAULT_LIMITS
+
 global_limit = limiter.shared_limit(
   DEFAULT_LIMITS,
   scope="global"
@@ -47,7 +81,6 @@ global_limit = limiter.shared_limit(
 # https://flask-limiter.readthedocs.io/en/stable/api.html#flask_limiter.ApplicationLimit
 
 def add_app_ratelimit_headers(response: Response, cur_limits: list[RequestLimit]):
-  print("called")
   # TODO: add app rate limit
   
   # sort limits by rate (largest window first)
@@ -97,39 +130,7 @@ def add_app_ratelimit_headers(response: Response, cur_limits: list[RequestLimit]
 throttle_start = 0
 throttling = False 
 
-def random_limit():
 
-  '''
-  Randomly throttles rate limit. Motivation is to test the client's ability to handle throttling during 
-  concurrent requests. 
-  
-  :param response: Description
-  :type response: Response
-  '''  
-
-  import time 
-  import random
-
-
-  def is_throttled():
-    global throttle_start
-    global throttling
-    now = time.time()
-
-    if not throttling and random.randint(0,5) == 0:
-      throttling = True
-      throttle_start = now
-      
-    if throttling and now - throttle_start > 10:
-      throttling = False
-
-    return throttling
-  
-  if is_throttled():
-    print("throttled")
-    return THROTTLED_LIMITS
-  
-  return DEFAULT_LIMITS
 
 
 def add_method_ratelimit_headers(response: Response):

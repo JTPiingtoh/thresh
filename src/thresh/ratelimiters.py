@@ -33,7 +33,7 @@ class RiotAPIRateLimiter():
     _index = defaultdict(lambda:(0,0,0,0))
 
     def __init__(self):
-        
+
         self.targets_to_update: list = []
 
 
@@ -132,10 +132,10 @@ class RiotAPIRateLimiter():
             wait_for = await self.compute_wait_for()
             if wait_for <= 0:
                 break
+            await asyncio.sleep(wait_for)
         
         resp: ClientResponse = await handler(req)
         
-        print(resp.headers)
         if self.targets_to_update:
             # call if computer_wait_for() finds headers that need to be updated
             await self.sync_limiter(resp.headers)

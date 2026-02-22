@@ -14,6 +14,7 @@ def create_aiohttp_closed_event(session) -> asyncio.Event:
     transports = 0
     all_is_lost = asyncio.Event()
 
+
     if len(session.connector._conns) == 0:
         all_is_lost.set()
         return all_is_lost
