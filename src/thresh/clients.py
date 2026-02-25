@@ -6,6 +6,7 @@ from typing import Final, AsyncIterator, Iterable, Generator
 
 from thresh.ratelimiters import RiotAPIRateLimiter
 from thresh.helpers import create_aiohttp_closed_event
+from thresh.middlewares import Response_object_maker_middleware
 
 import contextvars
 
@@ -57,14 +58,16 @@ class RiotAPIClient():
             for argument, value in kwargs.items():
                 request_object.append(dict(argument, value))
 
-        
+        response_maker = Response_object_maker_middleware()
 
-        async with asyncio.TaskGroup() as tg:
+        with self._rate_limiter.load_limiter() as limiter:
         
-
             for request in request_object: 
-                async with self._session.get(url=url, headers=request, middlewares=[self._rate_limiter]) as resp:
-                    tg.create_task(resp.text())
+                async with self._session.get(url=url, headers=request, middlewares=[limiter, response_maker]) as resp:
+                    # tg.create_task(resp.text())
+                    pass
+
+                
 
         return response_object
 

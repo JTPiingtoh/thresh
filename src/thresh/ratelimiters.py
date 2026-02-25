@@ -5,7 +5,7 @@ import pickle
 import time
 import asyncio
 from dataclasses import dataclass
-from contextlib import asynccontextmanager
+from contextlib import contextmanager
 from typing import Final
 from collections import defaultdict
 
@@ -27,15 +27,35 @@ limiter_state_cache = {}
 
 
 # TODO: handle window edge
+def default_index_value():
+    return (0,0,0,0)
 
 class RiotAPIRateLimiter():
 
-    _index = defaultdict(lambda:(0,0,0,0))
 
     def __init__(self):
 
         self.targets_to_update: list = []
+        self._index = defaultdict(default_index_value)
 
+
+    @contextmanager
+    def load_limiter(self):
+
+        try:
+            with open("index.pkl", "rb") as f:
+                self._index = pickle.load(f)
+        except FileNotFoundError:
+            pass
+        except EOFError:
+            pass
+
+        try:
+            yield self
+        finally:
+            with open("index.pkl", "wb") as f:
+                pickle.dump(self._index, f)
+        
 
     async def compute_wait_for(self) -> float:
 
@@ -108,17 +128,7 @@ class RiotAPIRateLimiter():
 
         return
     
-
-    @asynccontextmanager
-    def limit_session(self, session: ClientSession, middlewares: list):
-        middlewares.append(self)
-        self.midd
-        self.session = session
-        try:
-            yield(self)
-        finally:
-            # save state here
-            ...
+    
 
 
 
