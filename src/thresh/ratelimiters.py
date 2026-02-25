@@ -4,14 +4,16 @@
 import pickle
 import time
 import asyncio
+
 from dataclasses import dataclass
 from contextlib import contextmanager
-from typing import Final
+from typing import Final, Generator
 from collections import defaultdict
+from abc import ABC, abstractmethod
 
 from aiohttp import ClientRequest, ClientHandlerType, ClientResponse, ClientSession
 from aiohttp.web import HTTPClientError
-
+from multidict import CIMultiDictProxy
 
 @dataclass
 class THRESHKEYS:
@@ -30,7 +32,38 @@ limiter_state_cache = {}
 def default_index_value():
     return (0,0,0,0)
 
-class RiotAPIRateLimiter():
+
+class BaseRateLimiter(ABC):
+    '''
+    Base class for rate limiters, stipulating that any rate limiter shall be able
+    to load its own state, compute a wait for, and be able to sync itself. 
+    An async __call__() method should also be defined for use as as middleware. 
+    '''
+
+    @abstractmethod
+    def load_limiter(self) -> Generator["BaseRateLimiter", None, None]:
+        ...
+
+    @abstractmethod
+    async def compute_wait_for(self) -> float:
+        ...
+
+    @abstractmethod
+    async def sync_limiter(self, headers: CIMultiDictProxy[str]) -> None:
+        ...
+
+    @abstractmethod
+    async def __call__(
+        self, req: ClientRequest, handler: ClientHandlerType
+    ) -> ClientResponse:
+        ...
+
+
+
+class RiotAPIRateLimiter(BaseRateLimiter):
+    '''
+    Default rate limiter for thresh, limiting requests purely by parsing response headers.
+    '''
 
 
     def __init__(self):
@@ -38,9 +71,9 @@ class RiotAPIRateLimiter():
         self.targets_to_update: list = []
         self._index = defaultdict(default_index_value)
 
-
+    
     @contextmanager
-    def load_limiter(self):
+    def load_limiter(self) -> Generator[BaseRateLimiter, None, None]:
 
         try:
             with open("index.pkl", "rb") as f:
