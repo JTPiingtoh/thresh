@@ -45,6 +45,14 @@ class BaseRateLimiter(ABC):
         ...
 
     @abstractmethod
+    def load_state(self) -> None:
+        ...
+
+    @abstractmethod
+    def save_state(self) -> None:
+        ...
+
+    @abstractmethod
     async def compute_wait_for(self) -> float:
         ...
 
@@ -72,12 +80,35 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         self._index = defaultdict(default_index_value)
 
     
+    def load_state(self) -> None:
+
+        try:
+            with open("index.pkl", "rb") as f:
+                self._index = pickle.load(f)
+            with open("targets_to_update.pkl", "rb") as f:
+                self.targets_to_update = pickle.load(f)
+        except FileNotFoundError:
+            pass
+        except EOFError:
+            pass
+
+    
+    def save_state(self) -> None:
+
+        with open("index.pkl", "wb") as f:
+            pickle.dump(self._index, f)
+        with open("targets_to_update.pkl", "wb") as f:
+                pickle.dump(self.targets_to_update, f)
+
+
     @contextmanager
     def load_limiter(self) -> Generator[BaseRateLimiter, None, None]:
 
         try:
             with open("index.pkl", "rb") as f:
                 self._index = pickle.load(f)
+            with open("targets_to_update.pkl") as f:
+                self.targets_to_update = pickle.load(f)
         except FileNotFoundError:
             pass
         except EOFError:
