@@ -1,15 +1,15 @@
-from typing import Final, Iterable, Callable, Generator
+from typing import Final, Iterable, Callable, Generator, Iterator
 
-class Request_factory():
+class RiotAPIRequestFactory():
 
-    def __init__(self, region: str, parameter_iterable: Iterable[dict], url_factory: Callable[[dict], str]):
+    def __init__(self, region: str, parameter_iterable: Iterator[dict], url_factory: Callable[[dict], str]):
         self.region: Final[str] = region
         self.parameter_iterable = parameter_iterable
         self.url_factory: Final = url_factory
 
 
     @classmethod
-    def start_factory(cls, base_url: str, **kwargs) -> Request_factory:
+    def start_factory(cls, base_url: str, **kwargs) -> RiotAPIRequestFactory:
 
         parameter_iterable: Iterable[dict] 
 
@@ -32,7 +32,6 @@ class Request_factory():
                 
             parameter_iterable.append(parameter_dict)
 
-
         if "region" not in kwargs:
             raise ValueError("Missing region argument.")
 
@@ -46,18 +45,24 @@ class Request_factory():
 
     def __iter__(self):
 
-        if isinstance(self.parameter_iterable, list):
+        if not isinstance(self.parameter_iterable, Iterator):
             self.parameter_iterable = iter(self.parameter_iterable)
-
         return self
 
     def __next__(self):
 
-        parameters = next(self.parameter_iterable)
-        return self.url_factory(
-            self.region,
-            **parameters
-        ) 
+        parameters: dict = next(self.parameter_iterable)
+        url_factory: Callable[[dict], str]
+
+        try:
+            url_factory = self.url_factory(
+                self.region,
+                **parameters
+            )
+        except KeyError as e:
+            raise ValueError(f"Parameter missing value for {e}") 
+        
+        return url_factory
 
 
 
