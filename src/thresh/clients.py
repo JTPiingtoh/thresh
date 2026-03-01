@@ -8,8 +8,8 @@ import aiohttp
 
 from thresh.ratelimiters import RiotAPIRateLimiter, BaseRateLimiter
 from thresh.helpers import create_aiohttp_closed_event
-from thresh.middlewares import Response_object_maker_middleware
-from thresh._factories import RiotAPIRequestFactory
+from thresh._factories import ResultsFactory, RiotAPIRequestFactory
+from thresh.middlewares import ResponseFactoryMiddleWare
 
 
 class RiotAPIClient():
@@ -46,11 +46,21 @@ class RiotAPIClient():
             rate_limiter.save_state()
             
 
+    async def create_results_factory(self, request_factory: RiotAPIRequestFactory):
+        
+        results_factory = ResultsFactory(
+            request_factory=request_factory, 
+            session = self._session,
+            rate_limiter = self._rate_limiter
+            )
+
+        return results_factory
+
+
     # async def handle_request(self, url_factory: Callable[[dict], str], **kwargs):
     async def handle_request(self, *, request_factory: RiotAPIRequestFactory, **kwargs):
     
-        response_object = []
-        response_maker = Response_object_maker_middleware()
+        response_factory = ResponseFactoryMiddleWare()
         
         limiter = self._rate_limiter
 
@@ -58,13 +68,13 @@ class RiotAPIClient():
             for url in request_factory: 
                 # TODO: add api key to headers
                 # TODO: move url_factory to request factory, implement request factory with __iter__method to 
-                async with self._session.get(url=url, middlewares=[limiter, response_maker]) as resp:
+                async with self._session.get(url=url, middlewares=[limiter, response_factory]) as resp:
                     event: asyncio.Event = asyncio.Event()
                     tg.create_task(event.wait())
                     _ = await resp.text()
                     event.set()
                    
-        return response_object
+        return response_factory
 
 
     @staticmethod
@@ -78,9 +88,11 @@ class RiotAPIClient():
             @wraps(func)
             async def wrapper(self, **kwargs):
                 request_factory = RiotAPIRequestFactory.start_factory(base_url, **kwargs)                 
-                return await self.handle_request(
-                    request_factory=request_factory, **kwargs
-                )
+                # return await self.handle_request(
+                #     request_factory=request_factory, **kwargs
+                # )
+
+                return await self.create_results_factory(request_factory=request_factory)
             return wrapper
         return decorator
      
@@ -110,25 +122,3 @@ class RiotAPIClient():
     ):
         ...
 
-
-
-if __name__ == "__main__":
-
-
-    # init and connect are called
-    async def main():
-        async with RiotAPIClient.connect() as riot_client:
-            
-            _ = await riot_client.get_from_test_url()
-            
-
-    # init is called
-    # BUG: does not call connect()
-    async def main2():
-        async with aiohttp.ClientSession() as session:
-            riot_client = RiotAPIClient(session=session)
-            _ = await riot_client.get_from_test_url()
-            
-
-
-    asyncio.run(main2(), debug=True)

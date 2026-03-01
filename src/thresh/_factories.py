@@ -1,4 +1,9 @@
+import asyncio
+
+from aiohttp import ClientSession
+
 from typing import Final, Iterable, Callable, Generator, Iterator
+from thresh.ratelimiters import BaseRateLimiter
 
 class RiotAPIRequestFactory():
 
@@ -39,30 +44,58 @@ class RiotAPIRequestFactory():
 
         def url_factory(region=region, **kwargs):
             return base_url.format(region=region, **kwargs)
+        
+        if not isinstance(parameter_iterable, Iterator):
+            parameter_iterable = iter(parameter_iterable)
 
         return cls(region, parameter_iterable, url_factory)
 
 
     def __iter__(self):
-
-        if not isinstance(self.parameter_iterable, Iterator):
-            self.parameter_iterable = iter(self.parameter_iterable)
         return self
+    
 
     def __next__(self):
-
-        parameters: dict = next(self.parameter_iterable)
-        url_factory: Callable[[dict], str]
-
+         
         try:
-            url_factory = self.url_factory(
+            parameters: dict = next(self.parameter_iterable)
+            url: str
+            url = self.url_factory(
                 self.region,
                 **parameters
             )
+            return url
+        
         except KeyError as e:
             raise ValueError(f"Parameter missing value for {e}") 
         
-        return url_factory
+        
+
+
+class ResultsFactory():
+    def __init__(self, 
+        request_factory: RiotAPIRequestFactory, 
+        session: ClientSession,
+        rate_limiter: BaseRateLimiter
+        ):
+        self.request_factory : Final[RiotAPIRequestFactory] = request_factory
+        self.session : Final[ClientSession] =  session
+        self.rate_limiter : Final[BaseRateLimiter] = rate_limiter
+        
+    def __aiter__(self):
+        return self
+    
+    async def __anext__(self):
+        
+        try:
+            url = next(self.request_factory)
+        
+            async with self.session.get(url=url, middlewares=[self.rate_limiter]) as resp:
+                text = await resp.text()
+                return text
+        
+        except StopIteration:
+            raise StopAsyncIteration
 
 
 
@@ -85,7 +118,7 @@ if __name__ == "__main__":
     ):
         return f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}?page={page}"
 
-    request_factory = Request_factory(region="euw1", url_factory=url_factory, parameter_iterable=parameter_iterable)
+    # request_factory = Request_factory(region="euw1", url_factory=url_factory, parameter_iterable=parameter_iterable)
 
-    for url in request_factory:
-        print(url)
+    # for url in request_factory:
+    #     print(url)

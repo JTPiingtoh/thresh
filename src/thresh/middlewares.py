@@ -2,7 +2,7 @@ import asyncio
 from aiohttp import ClientRequest, ClientHandlerType, ClientResponse
 
 
-async def http_errer_401_middleware(
+async def http_error_401_middleware(
         self, req: ClientRequest, handler: ClientHandlerType
     ) -> ClientResponse:
 
@@ -10,7 +10,7 @@ async def http_errer_401_middleware(
     ...
 
 
-class Response_middleware():
+class ResponseFactoryMiddleWare():
     '''
     Middleware responsible for collecting response text. Also creates an event
     for when all responses have been collected. 
@@ -30,7 +30,7 @@ class Response_middleware():
         
 
         resp: ClientResponse = await handler(req)
-        self.results.append(await resp.text)
+        self.results.append(await resp.text())
 
         return resp 
     
