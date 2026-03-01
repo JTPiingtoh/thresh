@@ -143,7 +143,8 @@ def add_method_ratelimit_headers(response: Response):
 @limiter.limit(limit_value='9 per 1 seconds', override_defaults=False )
 def index():
 
-  response = make_response()
+  response = make_response("foo")
+  
   return add_app_ratelimit_headers(response=response, cur_limits=limiter.current_limits)
 
 
