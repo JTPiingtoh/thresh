@@ -25,7 +25,8 @@ class RiotAPIClient():
     @classmethod
     @asynccontextmanager
     async def connect(
-        cls, session: aiohttp.ClientSession | None = None, 
+        cls, 
+        session: aiohttp.ClientSession | None = None, 
         rate_limiter: BaseRateLimiter | None = None
         ) -> AsyncIterator["RiotAPIClient"]:
 
