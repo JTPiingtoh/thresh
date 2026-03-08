@@ -15,6 +15,8 @@ from aiohttp import ClientRequest, ClientHandlerType, ClientResponse, ClientSess
 from aiohttp.web import HTTPClientError
 from multidict import CIMultiDictProxy
 
+
+
 @dataclass
 class THRESHKEYS:
     RIOT_API_RATELIMITER_KEY: Final[str]  = "Client_RiotAPI_RLimiter_1"
@@ -60,11 +62,6 @@ class BaseRateLimiter(ABC):
     async def sync_limiter(self, headers: CIMultiDictProxy[str]) -> None:
         ...
 
-    @abstractmethod
-    async def __call__(
-        self, req: ClientRequest, handler: ClientHandlerType
-    ) -> ClientResponse:
-        ...
 
 
 
@@ -121,16 +118,14 @@ class RiotAPIRateLimiter(BaseRateLimiter):
                 pickle.dump(self._index, f)
         
 
-    async def compute_wait_for(self) -> float:
+    async def compute_wait_for(self, parameters: dict) -> float:
 
         wait_for: float = 0
-        self.sync = ...
-        
         for target in [
-            ("app", 0), # TODO: add region etc
-            ("app", 1),
-            ("method", 0),
-            ("method", 1)
+            ("app", 0, parameters["region"]), # TODO: add region etc
+            ("app", 1, parameters["region"]),
+            ("method", 0, parameters["region"]),
+            ("method", 1, parameters["region"])
         ]:
             count, limit, window_expire, latency = self._index[target]
 
@@ -146,7 +141,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
     
 
     async def sync_limiter(self, headers) -> None:
-
+    
         # dict[
         # tuple(scope, id, etc) : tuple(limit, count, upper_bound, latency)
         # ]
@@ -174,47 +169,30 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         response_time = time.time()
 
-        for target_key, request_time in self.targets_to_update:
-            scope, id, *others = target_key
+        # TODO: Fix this
+        print(self.targets_to_update)
+        for target_key, request_time in self.targets_to_update.pop(0):
+            scope, id, region, *others = target_key
 
             if id >= len(header_limits[scope]):
-                self._index[scope, id, *others] = (0, 100, 3_600, 0)
+                self._index[scope, id, region, *others] = (0, 100, 3_600, 0)
                 continue
 
-            self._index[scope, id, *others] = (
+            self._index[scope, id, region, *others] = (
                 header_counts[scope][id][0],
                 header_limits[scope][id][0],
                 header_limits[scope][id][1] + response_time, # window expires
                 response_time - request_time, # latency  
             )
 
-        self.targets_to_update = []
+        #BUG: If an error occurs in this coroutine due to the code above, this will never get called! e.g a value error where target unpacking 
+        # gives the incorrect number of values.
+        # The ratelimiter state is still saved during shutdown however, meaing the invalid targets also get saved, and can raise the error again!
+        # self.targets_to_update = []
 
         return
     
-    
 
-
-
-
-    # TODO: add logic that will force a wait if count reaches limit for a given window
-    async def __call__(
-        self, req: ClientRequest, handler: ClientHandlerType
-    ) -> ClientResponse:
-         
-        while True:
-            wait_for = await self.compute_wait_for()
-            if wait_for <= 0:
-                break
-            await asyncio.sleep(wait_for)
-        
-        resp: ClientResponse = await handler(req)
-        
-        if self.targets_to_update:
-            # call if computer_wait_for() finds headers that need to be updated
-            await self.sync_limiter(resp.headers)
-
-        return resp
 
     
 

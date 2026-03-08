@@ -7,10 +7,10 @@ from functools import wraps
 import aiohttp
 
 from thresh.ratelimiters import RiotAPIRateLimiter, BaseRateLimiter
-from thresh.helpers import create_aiohttp_closed_event
-from thresh._factories import ResultsFactory, RiotAPIRequestFactory
-from thresh.middlewares import ResponseFactoryMiddleWare
-
+from thresh.extras.aiohttp_closed_event import create_aiohttp_closed_event
+from thresh.middlewares import construct_rate_limit_middleware
+from thresh.request_object import RequestObject
+from thresh.extras.finalisablelist import FinalisableList
 
 class RiotAPIClient():
 
@@ -45,37 +45,6 @@ class RiotAPIClient():
             await all_is_lost.wait()
             await session.close()
             rate_limiter.save_state()
-            
-
-    async def create_results_factory(self, request_factory: RiotAPIRequestFactory):
-        
-        results_factory = ResultsFactory(
-            request_factory=request_factory, 
-            session = self._session,
-            rate_limiter = self._rate_limiter
-            )
-
-        return results_factory
-
-
-    # async def handle_request(self, url_factory: Callable[[dict], str], **kwargs):
-    async def handle_request(self, *, request_factory: RiotAPIRequestFactory, **kwargs):
-    
-        response_factory = ResponseFactoryMiddleWare()
-        
-        limiter = self._rate_limiter
-
-        async with asyncio.TaskGroup() as tg:
-            for url in request_factory: 
-                # TODO: add api key to headers
-                # TODO: move url_factory to request factory, implement request factory with __iter__method to 
-                async with self._session.get(url=url, middlewares=[limiter, response_factory]) as resp:
-                    event: asyncio.Event = asyncio.Event()
-                    tg.create_task(event.wait())
-                    _ = await resp.text()
-                    event.set()
-                   
-        return response_factory
 
 
     @staticmethod
@@ -87,13 +56,13 @@ class RiotAPIClient():
         '''
         def decorator(func):
             @wraps(func)
-            async def wrapper(self, **kwargs):
-                request_factory = RiotAPIRequestFactory.start_factory(base_url, **kwargs)                 
-                # return await self.handle_request(
-                #     request_factory=request_factory, **kwargs
-                # )
+            async def wrapper(self: RiotAPIClient, **kwargs):
+                middlewares = FinalisableList([])
+                #TODO: add middlewares
+                request_object: RequestObject = RequestObject(kwargs, base_url,self._rate_limiter, self._session, middlewares)            
+                return await request_object.send_request()
 
-                return await self.create_results_factory(request_factory=request_factory)
+                
             return wrapper
         return decorator
      
@@ -105,7 +74,6 @@ class RiotAPIClient():
             region: str | None = None, 
             tier: str | None = None, 
             division: str | None = None, 
-            parameter_iterable: Iterable | None = None
         ):
         ...
 
@@ -119,7 +87,6 @@ class RiotAPIClient():
         tier,
         division,
         page,
-        parameter_iterable
     ):
         ...
 
