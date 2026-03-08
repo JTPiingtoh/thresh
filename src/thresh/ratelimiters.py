@@ -169,9 +169,8 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         response_time = time.time()
 
-        # TODO: Fix this
-        print(self.targets_to_update)
-        for target_key, request_time in self.targets_to_update.pop(0):
+        for target_key, request_time in self.targets_to_update:
+            
             scope, id, region, *others = target_key
 
             if id >= len(header_limits[scope]):
@@ -188,7 +187,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         #BUG: If an error occurs in this coroutine due to the code above, this will never get called! e.g a value error where target unpacking 
         # gives the incorrect number of values.
         # The ratelimiter state is still saved during shutdown however, meaing the invalid targets also get saved, and can raise the error again!
-        # self.targets_to_update = []
+        self.targets_to_update = []
 
         return
     
