@@ -22,5 +22,5 @@ async def concurrently_request[I,O](
 
         # TODO: check order!
     
-        for task in tasks:
-            yield task
+    for task in tasks:
+        yield task.result()

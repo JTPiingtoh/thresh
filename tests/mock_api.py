@@ -140,7 +140,7 @@ def add_method_ratelimit_headers(response: Response):
 
 @app.route("/euw1/DIAMOND/I")
 @global_limit
-@limiter.limit(limit_value='9 per 1 seconds', override_defaults=False )
+@limiter.limit(limit_value='9 per 1 seconds; 9 per 2 seconds', override_defaults=False )
 def index():
 
   response = make_response("foo")

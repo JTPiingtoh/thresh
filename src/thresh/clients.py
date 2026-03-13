@@ -57,10 +57,23 @@ class RiotAPIClient():
         def decorator(func):
             @wraps(func)
             async def wrapper(self: RiotAPIClient, **kwargs):
-                middlewares = FinalisableList([])
                 #TODO: add middlewares
-                request_object: RequestObject = RequestObject(kwargs, base_url,self._rate_limiter, self._session, middlewares)            
-                return await request_object.send_request()
+                request_object: RequestObject = RequestObject(kwargs, base_url, self._session) 
+
+                # BUG: This breaks when used in a task group.
+                while True:
+                    wait_for = await self._rate_limiter.compute_wait_for(request_object)
+                    if wait_for <= 0:
+                        break
+                    await asyncio.sleep(wait_for)
+
+                response: aiohttp.ClientResponse = await request_object.response()
+
+                if self._rate_limiter.targets_to_update:
+                    await self._rate_limiter.sync_limiter(response.headers)
+
+                
+                return response
 
                 
             return wrapper

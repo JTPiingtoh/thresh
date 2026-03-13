@@ -11,11 +11,9 @@ from typing import Final, Generator
 from collections import defaultdict
 from abc import ABC, abstractmethod
 
-from aiohttp import ClientRequest, ClientHandlerType, ClientResponse, ClientSession
-from aiohttp.web import HTTPClientError
 from multidict import CIMultiDictProxy
 
-
+from thresh.request_object import RequestObject
 
 @dataclass
 class THRESHKEYS:
@@ -30,9 +28,7 @@ class RiotAPILimiterState:
 limiter_state_cache = {}
 
 
-# TODO: handle window edge
-def default_index_value():
-    return (0,0,0,0)
+
 
 
 class BaseRateLimiter(ABC):
@@ -69,74 +65,81 @@ class RiotAPIRateLimiter(BaseRateLimiter):
     '''
     Default rate limiter for thresh, limiting requests purely by parsing response headers.
     '''
-
+    # TODO: handle window edge
+    def default_index_value():
+        return (0,0,0,0)
 
     def __init__(self):
-
         self.targets_to_update: list = []
-        self._index = defaultdict(default_index_value)
+        self._index = defaultdict(RiotAPIRateLimiter.default_index_value)
 
     
     def load_state(self) -> None:
 
-        try:
-            with open("index.pkl", "rb") as f:
-                self._index = pickle.load(f)
-            with open("targets_to_update.pkl", "rb") as f:
-                self.targets_to_update = pickle.load(f)
-        except FileNotFoundError:
-            pass
-        except EOFError:
-            pass
-
+        # try:
+        #     with open("index.pkl", "rb") as f:
+        #         self._index = pickle.load(f)
+        #     with open("targets_to_update.pkl", "rb") as f:
+        #         self.targets_to_update = pickle.load(f)
+        # except FileNotFoundError:
+        #     pass
+        # except EOFError:
+        #     pass
+        pass
     
     def save_state(self) -> None:
 
-        with open("index.pkl", "wb") as f:
-            pickle.dump(self._index, f)
-        with open("targets_to_update.pkl", "wb") as f:
-                pickle.dump(self.targets_to_update, f)
-
+        # with open("index.pkl", "wb") as f:
+        #     pickle.dump(self._index, f)
+        # with open("targets_to_update.pkl", "wb") as f:
+        #         pickle.dump(self.targets_to_update, f)
+        pass
 
     @contextmanager
     def load_limiter(self) -> Generator[BaseRateLimiter, None, None]:
 
-        try:
-            with open("index.pkl", "rb") as f:
-                self._index = pickle.load(f)
-            with open("targets_to_update.pkl") as f:
-                self.targets_to_update = pickle.load(f)
-        except FileNotFoundError:
-            pass
-        except EOFError:
-            pass
+        # try:
+        #     with open("index.pkl", "rb") as f:
+        #         self._index = pickle.load(f)
+        #     with open("targets_to_update.pkl") as f:
+        #         self.targets_to_update = pickle.load(f)
+        # except FileNotFoundError:
+        #     pass
+        # except EOFError:
+        #     pass
+        pass
 
         try:
             yield self
         finally:
-            with open("index.pkl", "wb") as f:
-                pickle.dump(self._index, f)
-        
+            # with open("index.pkl", "wb") as f:
+            #     pickle.dump(self._index, f)
+            pass
 
-    async def compute_wait_for(self, parameters: dict) -> float:
 
+    async def compute_wait_for(self, request_object: RequestObject) -> float:
+        # request time does not go in loop body
+
+        self.targets_to_update = []
+        request_time = time.time()
         wait_for: float = 0
         for target in [
-            ("app", 0, parameters["region"]), # TODO: add region etc
-            ("app", 1, parameters["region"]),
-            ("method", 0, parameters["region"]),
-            ("method", 1, parameters["region"])
+            ("app", 0, request_object.parameters["region"]), # TODO: add region etc
+            ("app", 1, request_object.parameters["region"]),
+            ("method", 0, request_object.parameters["region"]),
+            ("method", 1, request_object.parameters["region"])
         ]:
             count, limit, window_expire, latency = self._index[target]
-
-            request_time = time.time()
-
+            print(count, limit)
             if count >= limit or request_time > window_expire - latency:
                 wait_for = max(wait_for, window_expire - request_time)
-
-            if wait_for <= 0:
                 self.targets_to_update.append( (target, request_time) )
-                
+        
+            else:
+                self._index[target] = (count + 1, limit, window_expire, latency)        
+
+            # if all targets complied, update. If a wait_for has been used,
+            # count does not increase                
         return wait_for
     
 
@@ -167,17 +170,21 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         # If the number of targets is greater than the number of rate_limits present in the headers, there
         # we don't have info re that ratelimit, we need to give it a stasis like state 
 
+
+        print(header_counts)
         response_time = time.time()
 
+        # TODO: change targets to update to some other data structure: list is resulting excessively long 
+        # targets_to_update
         for target_key, request_time in self.targets_to_update:
             
-            scope, id, region, *others = target_key
+            scope, id, *others = target_key
 
             if id >= len(header_limits[scope]):
-                self._index[scope, id, region, *others] = (0, 100, 3_600, 0)
+                self._index[scope, id,  *others] = (0, 100, 3_600, 0)
                 continue
 
-            self._index[scope, id, region, *others] = (
+            self._index[scope, id, *others] = (
                 header_counts[scope][id][0],
                 header_limits[scope][id][0],
                 header_limits[scope][id][1] + response_time, # window expires
@@ -187,7 +194,6 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         #BUG: If an error occurs in this coroutine due to the code above, this will never get called! e.g a value error where target unpacking 
         # gives the incorrect number of values.
         # The ratelimiter state is still saved during shutdown however, meaing the invalid targets also get saved, and can raise the error again!
-        self.targets_to_update = []
 
         return
     
