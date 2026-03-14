@@ -67,7 +67,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
     '''
     # TODO: handle window edge
     def default_index_value():
-        return (0,0,0,0)
+        return (0,0,0,0, 0)
 
     def __init__(self):
         self.targets_to_update: list = []
@@ -117,10 +117,14 @@ class RiotAPIRateLimiter(BaseRateLimiter):
             pass
 
 
-    async def compute_wait_for(self, request_object: RequestObject) -> float:
-        # request time does not go in loop body
+    # TODO: add mechanism to check if target has been pinged yet
+    # TODO: add error logging
+    # TODO: add mechanism for removing stale targets
 
-        self.targets_to_update = []
+    async def compute_wait_for(self, request_object: RequestObject) -> float:
+
+        pinging_targets = []
+        requesting_targets = []
         request_time = time.time()
         wait_for: float = 0
         for target in [
@@ -129,14 +133,34 @@ class RiotAPIRateLimiter(BaseRateLimiter):
             ("method", 0, request_object.parameters["region"]),
             ("method", 1, request_object.parameters["region"])
         ]:
-            count, limit, window_expire, latency = self._index[target]
-            print(count, limit)
-            if count >= limit or request_time > window_expire - latency:
+            count, limit, window_expire, latency, pinged = self._index[target]
+
+            print(count, limit, window_expire, latency, pinged )
+            
+            # pinging means we don't yet know this window's state
+            pinging = pinged and request_time - pinged < 1
+
+            if pinging:
+                wait_for = max(wait_for, 1)
+            # will always be true in uninitited index
+            elif request_time > window_expire:
+                print("expired")
+                pinging_targets.append(target)
+            elif count >= limit or request_time > window_expire - latency:
                 wait_for = max(wait_for, window_expire - request_time)
-                self.targets_to_update.append( (target, request_time) )
-        
             else:
-                self._index[target] = (count + 1, limit, window_expire, latency)        
+                requesting_targets.append(target)
+
+            if wait_for <= 0:
+                if pinging_targets:
+                    for pinging_target in pinging_targets:
+                        self.targets_to_update.append(( pinging_target, request_time) )
+                        self._index[pinging_target] = (0, 0, 0, 0, time.time()) 
+                    wait_for = -1
+                for r_target in requesting_targets:
+                    count, *values = self._index[target]
+                    self._index[r_target] = (count + 1, *values)        
+
 
             # if all targets complied, update. If a wait_for has been used,
             # count does not increase                
@@ -170,18 +194,16 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         # If the number of targets is greater than the number of rate_limits present in the headers, there
         # we don't have info re that ratelimit, we need to give it a stasis like state 
 
-
-        print(header_counts)
         response_time = time.time()
 
         # TODO: change targets to update to some other data structure: list is resulting excessively long 
         # targets_to_update
+        print(self.targets_to_update)
         for target_key, request_time in self.targets_to_update:
             
             scope, id, *others = target_key
-
             if id >= len(header_limits[scope]):
-                self._index[scope, id,  *others] = (0, 100, 3_600, 0)
+                self._index[scope, id,  *others] = (0, 100, 3_600, 0, 0)
                 continue
 
             self._index[scope, id, *others] = (
@@ -189,7 +211,15 @@ class RiotAPIRateLimiter(BaseRateLimiter):
                 header_limits[scope][id][0],
                 header_limits[scope][id][1] + response_time, # window expires
                 response_time - request_time, # latency  
+                0
             )
+
+
+        self.targets_to_update = []
+        
+        print(f"header counts: {header_counts}")
+        print("sync called")
+        print(self._index)
 
         #BUG: If an error occurs in this coroutine due to the code above, this will never get called! e.g a value error where target unpacking 
         # gives the incorrect number of values.

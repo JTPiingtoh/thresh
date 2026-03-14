@@ -63,14 +63,16 @@ class RiotAPIClient():
                 # BUG: This breaks when used in a task group.
                 while True:
                     wait_for = await self._rate_limiter.compute_wait_for(request_object)
+                    print(wait_for)
                     if wait_for <= 0:
                         break
                     await asyncio.sleep(wait_for)
 
+                print("request sent")
                 response: aiohttp.ClientResponse = await request_object.response()
+                print("response recieved")
 
-                if self._rate_limiter.targets_to_update:
-                    await self._rate_limiter.sync_limiter(response.headers)
+                await self._rate_limiter.sync_limiter(response.headers)
 
                 
                 return response

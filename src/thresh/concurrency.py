@@ -5,12 +5,17 @@ import aiohttp
 
 from thresh.clients import RiotAPIClient
 
-# BUG: is creating a new rate_limit instance
-async def concurrently_request[I,O](
+# BUG: max_concurrent requests are being sent out before wait_for is 
+# calculated
+async def eagerly_concurrently_request[I,O](
     request: Callable[[I], Coroutine[Any, Any, O]], 
     inputs: AsyncIterator[I],
     max_concurrent: int = 1) -> AsyncIterator[O]:
-    
+    '''
+    Eagerly request from the supplied API endpoint. Returns a MultiResponse
+    object.
+    '''
+
     semaphore = asyncio.Semaphore(max_concurrent)
 
     async def do_request(input):
