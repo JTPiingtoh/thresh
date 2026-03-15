@@ -123,6 +123,9 @@ def add_app_ratelimit_headers(response: Response, cur_limits: list[RequestLimit]
   response.headers["X-Method-Rate-Limit"] = ",".join(rate_limits["Method"])  
   response.headers["X-Method-Rate-Limit-Count"] = ",".join(limit_counts["Method"])  
 
+  print(rate_limits["App"], limit_counts["App"])
+  print(rate_limits["Method"], limit_counts["Method"])
+
   return response
 
 

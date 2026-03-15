@@ -72,7 +72,8 @@ class RiotAPIClient():
                 response: aiohttp.ClientResponse = await request_object.response()
                 print("response recieved")
 
-                await self._rate_limiter.sync_limiter(response.headers)
+                if wait_for == -1:
+                    await self._rate_limiter.sync_limiter(response.headers)
 
                 
                 return response
