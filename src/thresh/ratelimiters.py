@@ -70,9 +70,14 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         return (0,0,0,0, 0)
 
     def __init__(self):
-        self.targets_to_update: list = []
+        self.targets_to_update: list = {}
         self._index = defaultdict(RiotAPIRateLimiter.default_index_value)
-
+        self._base_targets = [
+            ("app", 0),  
+            ("app", 1), 
+            ("method", 0),
+            ("method", 1)
+        ]
     
     def load_state(self) -> None:
 
@@ -127,42 +132,40 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         requesting_targets = []
         request_time = time.time()
         wait_for: float = 0
-        for target in [
-            ("app", 0, request_object.parameters["region"]), # TODO: add region etc
-            ("app", 1, request_object.parameters["region"]),
-            ("method", 0, request_object.parameters["region"]),
-            ("method", 1, request_object.parameters["region"])
-        ]:
+        # for target in [
+        #     ("app", 0, request_object.parameters["region"]), # TODO: add region etc
+        #     ("app", 1, request_object.parameters["region"]),
+        #     ("method", 0, request_object.parameters["region"]),
+        #     ("method", 1, request_object.parameters["region"])
+        # ]:
+
+        for base_target in self._base_targets:
+
+            target = *base_target, request_object.parameters["region"]
             count, limit, window_expire, latency, pinged = self._index[target]
 
-            print(f"target: {target}")
-            print(f"values: {count, limit, window_expire, latency, pinged}")
             
             # pinging means we don't yet know this window's state
             pinging = pinged and request_time - pinged < 10
 
             if pinging:
-                print("pinging")
                 wait_for = max(wait_for, 0.1)
             # will always be true in uninitited index
             elif request_time > window_expire:
-                print("expired")
                 pinging_targets.append(target)
             elif count >= limit or request_time > window_expire - latency:
-                print("exceeded")
                 wait_for = max(wait_for, window_expire - request_time)
             else:
-                print("compliant - requesting")
                 requesting_targets.append(target)
 
         if wait_for <= 0:
             if pinging_targets:
                 for pinging_target in pinging_targets:
-                    self.targets_to_update.append(( pinging_target, request_time) )
+                    self.targets_to_update[pinging_target] = request_time 
                     self._index[pinging_target] = (0, 0, 0, 0, time.time()) 
                 wait_for = -1
             for r_target in requesting_targets:
-                count, *values = self._index[target]
+                count, *values = self._index[r_target]
                 self._index[r_target] = (count + 1, *values)        
 
 
@@ -171,7 +174,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         return wait_for
     
 
-    async def sync_limiter(self, headers) -> None:
+    async def sync_limiter(self, request_object: RequestObject, headers) -> None:
     
         # dict[
         # tuple(scope, id, etc) : tuple(limit, count, upper_bound, latency)
@@ -202,10 +205,16 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         # TODO: change targets to update to some other data structure: list is resulting excessively long 
         # targets_to_update
-        print(f"targets to update: {self.targets_to_update}")
-        for target_key, request_time in self.targets_to_update:
+
+        for base_target in self._base_targets:
             
-            scope, id, *others = target_key
+            target = *base_target, request_object.parameters["region"]
+            try:
+                request_time = self.targets_to_update[target]
+            except KeyError:
+                continue
+
+            scope, id, *others = target
             if id >= len(header_limits[scope]):
                 self._index[scope, id,  *others] = (0, 100, 3_600, 0, 0)
                 continue
@@ -219,11 +228,8 @@ class RiotAPIRateLimiter(BaseRateLimiter):
             )
 
 
-        self.targets_to_update = []
+        self.targets_to_update = {}
         
-        print(f"header counts: {header_counts}")
-        print("sync called")
-        print(self._index)
 
         #BUG: If an error occurs in this coroutine due to the code above, this will never get called! e.g a value error where target unpacking 
         # gives the incorrect number of values.
