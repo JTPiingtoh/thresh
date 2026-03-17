@@ -1,88 +1,61 @@
-from functools import wraps
-from inspect import signature
+# we want a series of functions that will call eachother
+# the last functions will actually send the request
+# this is in effect just layers of function decorators.
 
 
-def handle_request(url, **kwargs):
-    print("url", url)
-    for argument, value in kwargs.items():
-        print(argument, value)
+import time
+
+def retry(func):    
+    def inner():
+        response: int
+        for i in range(3):
+            print(f"retry {i}")
+            response = func()
+            if response == 0:
+                break
 
 
-def riot_api_endpoint(base_url: str):
-    def decorator(func):
-        sig = signature(func)
-
-        @wraps(func)
-        def wrapper(**kwargs):
-        
-            def url_builder(**builder_kwargs):
-                return base_url.format(**builder_kwargs)
-                
-
-            # url = base_url.format(**kwargs)
-            # return url
-            return url_builder
-        return wrapper
-    return decorator
+        return response
+    return inner
 
 
-@riot_api_endpoint("https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}?page={page}")
-def get_league_v4_entries_queue_tier_division(
-    *,
-    region,
-    queue,
-    tier,
-    division,
-    page,
-    parameter_iterable
+def error_handler(func):    
+    def inner():
+        response = func()
+        if response != 0:
+            print("bad response!")
+        else:
+            print("good reponse!")
+        return response
+    return inner
+
+
+def rate_limiter(func):    
+    def inner():
+        time.sleep(0.5)
+        print("limited!")
+        response = func()
+        return response
+    return inner
     
-):
-    ...
-    
-    # def url_contructor(
-    #     region,
-    #     queue,
-    #     tier,
-    #     division,
-    #     page  
-    # ):
-    #     return f"https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}?page={page}"
-    
-    # return handle_request(
-    #     url=url_contructor, region=region, queue=queue, tier=tier, division=division, page=page, options=options
-    # )
+@retry
+@error_handler
+@rate_limiter
+def final1():
+    response = 0
+    return response
 
+middlewares = [rate_limiter, error_handler, retry]
 
-if __name__ == "__main__":
+def final2():
+    response = 0
+    return response
 
-    val = get_league_v4_entries_queue_tier_division(
-        region="euw1",
-        queue="SOLO",
-        tier="DIAMOND",
-        division="I",
-        page=1,
-        parameter_iterable=None
-    )
+for mw in middlewares:
+    final2 = mw(final2)
 
-
-    a= {
-        "region":"euw1",
-        "queue":"SOLO",
-        "tier":"DIAMOND",
-        "division":"I",
-        "page":1,
-        "parameter_iterable": None
-    }
-    url = val(**a)
-    print(url)
-    # 'euw1', 'SOLO', 'DIAMOND', 'I', 1
-    # base = "https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}?page={page}"
-    # args = {
-    #     "region" : "euw1",
-    # }
-
-    # def _(**args):
-    #     print (*args)
-    # # print(**args)
-    # _(**args)
-    # base.format(**args)
+response = final1()
+print(f"final response 1: {response}")
+print()
+response = final2()
+print(f"final response 2: {response}")

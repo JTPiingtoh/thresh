@@ -35,8 +35,6 @@ class RiotAPIClient():
         if rate_limiter == None:
             rate_limiter = RiotAPIRateLimiter()
 
-        rate_limiter.load_state()
-
         try:
             yield cls(session, rate_limiter) 
 
@@ -44,7 +42,7 @@ class RiotAPIClient():
             all_is_lost: asyncio.Event = create_aiohttp_closed_event(session)
             await all_is_lost.wait()
             await session.close()
-            rate_limiter.save_state()
+  
 
 
     @staticmethod
@@ -58,24 +56,10 @@ class RiotAPIClient():
             @wraps(func)
             async def wrapper(self: RiotAPIClient, **kwargs):
                 #TODO: add middlewares
-                request_object: RequestObject = RequestObject(kwargs, base_url, self._session) 
-
-                # BUG: This breaks when used in a task group.
-                while True:
-                    wait_for = await self._rate_limiter.compute_wait_for(request_object)
-                    if wait_for <= 0:
-                        break
-                    await asyncio.sleep(wait_for)
-
-                response: aiohttp.ClientResponse = await request_object.response()
-
-                if wait_for == -1:
-                    await self._rate_limiter.sync_limiter(request_object, response.headers)
-
+                request_object: RequestObject = RequestObject(kwargs, base_url, self._session, self._rate_limiter) 
+                response: aiohttp.ClientResponse = await request_object.handle_request()
                 
-                return response
-
-                
+                return response            
             return wrapper
         return decorator
      

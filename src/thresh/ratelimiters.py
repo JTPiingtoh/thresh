@@ -13,7 +13,6 @@ from abc import ABC, abstractmethod
 
 from multidict import CIMultiDictProxy
 
-from thresh.request_object import RequestObject
 
 @dataclass
 class THRESHKEYS:
@@ -30,25 +29,14 @@ limiter_state_cache = {}
 
 
 
-
+# TODO: add error logging
+# TODO: add mechanism for removing stale targets
 class BaseRateLimiter(ABC):
     '''
     Base class for rate limiters, stipulating that any rate limiter shall be able
     to load its own state, compute a wait for, and be able to sync itself. 
     An async __call__() method should also be defined for use as as middleware. 
     '''
-
-    @abstractmethod
-    def load_limiter(self) -> Generator["BaseRateLimiter", None, None]:
-        ...
-
-    @abstractmethod
-    def load_state(self) -> None:
-        ...
-
-    @abstractmethod
-    def save_state(self) -> None:
-        ...
 
     @abstractmethod
     async def compute_wait_for(self) -> float:
@@ -65,7 +53,6 @@ class RiotAPIRateLimiter(BaseRateLimiter):
     '''
     Default rate limiter for thresh, limiting requests purely by parsing response headers.
     '''
-    # TODO: handle window edge
     def default_index_value():
         return (0,0,0,0, 0)
 
@@ -79,54 +66,12 @@ class RiotAPIRateLimiter(BaseRateLimiter):
             ("method", 1)
         ]
     
-    def load_state(self) -> None:
-
-        # try:
-        #     with open("index.pkl", "rb") as f:
-        #         self._index = pickle.load(f)
-        #     with open("targets_to_update.pkl", "rb") as f:
-        #         self.targets_to_update = pickle.load(f)
-        # except FileNotFoundError:
-        #     pass
-        # except EOFError:
-        #     pass
-        pass
-    
-    def save_state(self) -> None:
-
-        # with open("index.pkl", "wb") as f:
-        #     pickle.dump(self._index, f)
-        # with open("targets_to_update.pkl", "wb") as f:
-        #         pickle.dump(self.targets_to_update, f)
-        pass
-
-    @contextmanager
-    def load_limiter(self) -> Generator[BaseRateLimiter, None, None]:
-
-        # try:
-        #     with open("index.pkl", "rb") as f:
-        #         self._index = pickle.load(f)
-        #     with open("targets_to_update.pkl") as f:
-        #         self.targets_to_update = pickle.load(f)
-        # except FileNotFoundError:
-        #     pass
-        # except EOFError:
-        #     pass
-        pass
-
-        try:
-            yield self
-        finally:
-            # with open("index.pkl", "wb") as f:
-            #     pickle.dump(self._index, f)
-            pass
 
 
-    # TODO: add mechanism to check if target has been pinged yet
     # TODO: add error logging
     # TODO: add mechanism for removing stale targets
 
-    async def compute_wait_for(self, request_object: RequestObject) -> float:
+    async def compute_wait_for(self, region: str) -> float:
 
         pinging_targets = []
         requesting_targets = []
@@ -141,7 +86,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         for base_target in self._base_targets:
 
-            target = *base_target, request_object.parameters["region"]
+            target = *base_target, region
             count, limit, window_expire, latency, pinged = self._index[target]
 
             
@@ -174,7 +119,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         return wait_for
     
 
-    async def sync_limiter(self, request_object: RequestObject, headers) -> None:
+    async def sync_limiter(self, region: str, headers) -> None:
     
         # dict[
         # tuple(scope, id, etc) : tuple(limit, count, upper_bound, latency)
@@ -208,7 +153,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         for base_target in self._base_targets:
             
-            target = *base_target, request_object.parameters["region"]
+            target = *base_target, region
             try:
                 request_time = self.targets_to_update[target]
             except KeyError:
