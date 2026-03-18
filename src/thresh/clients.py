@@ -3,6 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Final, AsyncIterator, Iterable, Generator, Callable
 from functools import wraps
+import inspect
 
 import aiohttp
 
@@ -10,7 +11,7 @@ from thresh.ratelimiters import RiotAPIRateLimiter, BaseRateLimiter
 from thresh.extras.aiohttp_closed_event import create_aiohttp_closed_event
 from thresh.middlewares import construct_rate_limit_middleware
 from thresh.request_object import RequestObject
-from thresh.extras.finalisablelist import FinalisableList
+from thresh.middlewares import construct_rate_limit_middleware
 
 class RiotAPIClient():
 
@@ -20,6 +21,7 @@ class RiotAPIClient():
     def __init__(self, session: aiohttp.ClientSession, rate_limiter: BaseRateLimiter):
         self._session = session
         self._rate_limiter = rate_limiter
+        self.middlewares = [construct_rate_limit_middleware(self._rate_limiter)]
     
 
     @classmethod
@@ -64,7 +66,45 @@ class RiotAPIClient():
         return decorator
      
 
-    @riot_api_endpoint("http://127.0.0.1:5000/{region}/{tier}/{division}")
+    async def build_request_object(self, base_url: str) -> aiohttp.ClientResponse:
+
+        caller_frame = inspect.currentframe().f_back
+        caller_args = caller_frame.f_locals
+        url: Final[str]
+        try:
+            url = base_url.format(**caller_args)
+
+            request_object = RequestObject(url=url, params=caller_args, session=self._session)
+            return request_object
+        
+        except KeyError as e:
+            caller_name = caller_frame.f_code.co_name
+            raise ValueError(f"{caller_name} is missing argument for {e}")
+        
+
+    @staticmethod
+    def riot_api_endpoint_new(func):
+
+        def wrap(middleware, handler):
+            
+            async def new_handler(base_url):
+                response = middleware(base_url, handler)
+                return response
+            return new_handler        
+
+        @wraps(func)
+        async def inner(self):
+
+            middlewares = self.middlewares.reverse()
+            handler = func()
+            for middleware in middlewares:
+                handler = wrap(middleware, handler)
+
+            return handler
+        return inner
+
+    # @riot_api_endpoint("http://127.0.0.1:5000/{region}/{tier}/{division}")
+    @riot_api_endpoint_new
     async def get_from_test_url(
             self, 
             *,
@@ -72,7 +112,8 @@ class RiotAPIClient():
             tier: str | None = None, 
             division: str | None = None, 
         ):
-        ...
+
+        return self.build_request_object(base_url="http://127.0.0.1:5000/{region}/{tier}/{division}")
 
 
     @riot_api_endpoint("https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}?page={page}")
