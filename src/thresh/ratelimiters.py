@@ -39,11 +39,11 @@ class BaseRateLimiter(ABC):
     '''
 
     @abstractmethod
-    async def compute_wait_for(self) -> float:
+    async def compute_wait_for(self, parameters: dict) -> float:
         ...
 
     @abstractmethod
-    async def sync_limiter(self, headers: CIMultiDictProxy[str]) -> None:
+    async def sync_limiter(self, parameters: dict) -> None:
         ...
 
 
@@ -71,7 +71,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
     # TODO: add error logging
     # TODO: add mechanism for removing stale targets
 
-    async def compute_wait_for(self, region: str) -> float:
+    async def compute_wait_for(self, parameters: dict) -> float:
 
         pinging_targets = []
         requesting_targets = []
@@ -86,7 +86,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         for base_target in self._base_targets:
 
-            target = *base_target, region
+            target = *base_target, parameters["region"]
             count, limit, window_expire, latency, pinged = self._index[target]
 
             
@@ -119,7 +119,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         return wait_for
     
 
-    async def sync_limiter(self, region: str, headers) -> None:
+    async def sync_limiter(self, parameters: dict, headers) -> None:
     
         # dict[
         # tuple(scope, id, etc) : tuple(limit, count, upper_bound, latency)
@@ -153,7 +153,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         for base_target in self._base_targets:
             
-            target = *base_target, region
+            target = *base_target, parameters["region"]
             try:
                 request_time = self.targets_to_update[target]
             except KeyError:

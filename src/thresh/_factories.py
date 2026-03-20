@@ -14,7 +14,7 @@ class RiotAPIRequestFactory():
 
 
     @classmethod
-    def start_factory(cls, base_url: str, **kwargs) -> RiotAPIRequestFactory:
+    def start_factory(cls, base_url: str, **kwargs) -> "RiotAPIRequestFactory":
 
         parameter_iterable: Iterable[dict] 
 

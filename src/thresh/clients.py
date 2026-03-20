@@ -11,7 +11,7 @@ from thresh.ratelimiters import RiotAPIRateLimiter, BaseRateLimiter
 from thresh.extras.aiohttp_closed_event import create_aiohttp_closed_event
 from thresh.middlewares import construct_rate_limit_middleware
 from thresh.request_object import RequestObject
-from thresh.middlewares import construct_rate_limit_middleware
+from thresh.middlewares import request_rate_limit_middleware
 
 class RiotAPIClient():
 
@@ -21,7 +21,7 @@ class RiotAPIClient():
     def __init__(self, session: aiohttp.ClientSession, rate_limiter: BaseRateLimiter):
         self._session = session
         self._rate_limiter = rate_limiter
-        self.middlewares = [construct_rate_limit_middleware(self._rate_limiter)]
+        self.default_middlewares = [request_rate_limit_middleware] # TODO: add other middlewares
     
 
     @classmethod
@@ -47,6 +47,7 @@ class RiotAPIClient():
   
 
 
+
     @staticmethod
     def riot_api_endpoint(base_url: str):
         '''
@@ -66,7 +67,7 @@ class RiotAPIClient():
         return decorator
      
 
-    async def build_request_object(self, base_url: str) -> aiohttp.ClientResponse:
+    async def send_request(self, base_url: str) -> aiohttp.ClientResponse:
 
         caller_frame = inspect.currentframe().f_back
         caller_args = caller_frame.f_locals
@@ -74,8 +75,13 @@ class RiotAPIClient():
         try:
             url = base_url.format(**caller_args)
 
-            request_object = RequestObject(url=url, params=caller_args, session=self._session)
-            return request_object
+            request_object = RequestObject(
+                url=url, 
+                params=caller_args, 
+                session=self._session, 
+                middlewares=self.default_middlewares
+            )
+            return await request_object.send_request()
         
         except KeyError as e:
             caller_name = caller_frame.f_code.co_name
