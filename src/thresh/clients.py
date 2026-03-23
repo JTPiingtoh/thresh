@@ -65,52 +65,32 @@ class RiotAPIClient():
                 return response            
             return wrapper
         return decorator
-     
+    
 
-    async def send_request(self, base_url: str) -> aiohttp.ClientResponse:
+    async def build_request_object(self, base_url: str) -> aiohttp.ClientResponse:
 
         caller_frame = inspect.currentframe().f_back
         caller_args = caller_frame.f_locals
+        caller_name = caller_frame.f_code.co_name
         url: Final[str]
         try:
-            url = base_url.format(**caller_args)
+            
 
             request_object = RequestObject(
-                url=url, 
-                params=caller_args, 
-                session=self._session, 
-                middlewares=self.default_middlewares
+                base_url=url, 
+                parameters=caller_args, 
+                session=self._session,
+                endpoint_name=caller_name
             )
+
             return await request_object.send_request()
         
-        except KeyError as e:
-            caller_name = caller_frame.f_code.co_name
-            raise ValueError(f"{caller_name} is missing argument for {e}")
+        
         
 
-    @staticmethod
-    def riot_api_endpoint_new(func):
-
-        def wrap(middleware, handler):
-            
-            async def new_handler(base_url):
-                response = middleware(base_url, handler)
-                return response
-            return new_handler        
-
-        @wraps(func)
-        async def inner(self):
-
-            middlewares = self.middlewares.reverse()
-            handler = func()
-            for middleware in middlewares:
-                handler = wrap(middleware, handler)
-
-            return handler
-        return inner
 
     # @riot_api_endpoint("http://127.0.0.1:5000/{region}/{tier}/{division}")
-    @riot_api_endpoint_new
+    
     async def get_from_test_url(
             self, 
             *,

@@ -15,18 +15,28 @@ class RequestObject():
         url: str,
         parameters: dict,
         session: aiohttp.ClientSession,
-        middlewares: dict
+        endpoint_name: str
         ):       
         self.url: Final[str] = url
         self.parameters: Final[dict] = parameters        
         self.session: Final[aiohttp.CLientSession] = session,
-        self.middlewares: dict = middlewares
+        self.endpoint_name: Final[str] = endpoint_name
+    
+    
+    @property
+    def url(self) -> str:
+        try:
+            return self.base_url.format(**self.parameters)
+        except KeyError as e:          
+            raise ValueError(f"{self.endopoint_name} is missing argument for {e}") 
+        
 
     @property
     def middlewares(self) -> list:
         '''
         If any middlewares are classes, initiate them with the request object's parameters
         '''
+        
         initiated_middlewares = []
         for middleware in self.middlewares:
             if issubclass(middleware, RequestMiddleware):
@@ -38,7 +48,7 @@ class RequestObject():
         return initiated_middlewares
 
     # TODO: Curren
-    async def _send_request(self) -> aiohttp.ClientResponse: 
+    async def __call__(self) -> aiohttp.ClientResponse: 
         '''
         Send the request the request object represents
         '''
@@ -69,8 +79,7 @@ class RequestObject():
             final_handler = ...
 
         
-    async def send_request(self)
-        
+
     
     
 
