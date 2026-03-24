@@ -6,7 +6,10 @@ import aiohttp
 
 from thresh.ratelimiters import BaseRateLimiter
 from thresh.middlewares import RequestMiddleware
-        
+from thresh.extras.dependancy_injectors import inject_from
+
+
+
 # aim of this class is to use dependancy injection to create a request
 class RequestObject():
 
@@ -38,12 +41,19 @@ class RequestObject():
         '''
         
         initiated_middlewares = []
-        for middleware in self.middlewares:
-            if issubclass(middleware, RequestMiddleware):
-                # Raises error if middleware class in not corrently implemented
-                middleware: Callable = middleware(self.parameters)
-            
-            initiated_middlewares.append(middleware)
+        for i, middleware in enumerate(self.middlewares):
+            # Raises error if middleware class in not corrently implemented
+            #   Must have __call__ method
+            # inject_from must work
+            if not inspect.isclass(middleware):
+                continue
+
+            try:
+                middleware.__call__
+            except AttributeError:
+                raise AttributeError(f"middleware class {middleware} must have a __call__ method.")
+
+            self.middlewares[i] = inject_from(middleware, self)
 
         return initiated_middlewares
 
