@@ -1,81 +1,88 @@
 import asyncio
 from typing import Final, Callable
 import inspect
+from functools import wraps
 
 import aiohttp
 
 from thresh.ratelimiters import BaseRateLimiter
-from thresh.middlewares import RequestMiddleware
 from thresh.extras.dependancy_injectors import inject_from
 
 
 
-# aim of this class is to use dependancy injection to create a request
 class RequestObject():
 
     def __init__(
         self,
-        url: str,
+        base_url: str,
         parameters: dict,
         session: aiohttp.ClientSession,
+        rate_limiter: BaseRateLimiter,
+        middlewares: list[Callable],
         endpoint_name: str
         ):       
-        self.url: Final[str] = url
-        self.parameters: Final[dict] = parameters        
-        self.session: Final[aiohttp.CLientSession] = session,
-        self.endpoint_name: Final[str] = endpoint_name
-    
-    
+        self._base_url: Final[str] = base_url
+        self._parameters: dict = parameters        
+        self._session: Final[aiohttp.ClientSession] = session
+        self._rate_limiter: Final[BaseRateLimiter] = rate_limiter
+        self._middlewares: list[Callable] = middlewares
+        # For more detailed tracebacks when using pipelines  
+        self._endpoint_name: str = endpoint_name
+
+
     @property
     def url(self) -> str:
         try:
-            return self.base_url.format(**self.parameters)
+            return self._base_url.format(**self._parameters)
         except KeyError as e:          
-            raise ValueError(f"{self.endopoint_name} is missing argument for {e}") 
+            raise ValueError(f"{self._endpoint_name} is missing argument for {e}") 
         
 
     @property
     def middlewares(self) -> list:
-        '''
-        If any middlewares are classes, initiate them with the request object's parameters
-        '''
         
-        initiated_middlewares = []
-        for i, middleware in enumerate(self.middlewares):
-            # Raises error if middleware class in not corrently implemented
-            #   Must have __call__ method
-            # inject_from must work
+        for middleware in self._middlewares:
             if not inspect.isclass(middleware):
                 continue
-
             try:
                 middleware.__call__
             except AttributeError:
                 raise AttributeError(f"middleware class {middleware} must have a __call__ method.")
 
-            self.middlewares[i] = inject_from(middleware, self)
+        return self._middlewares
+    
 
-        return initiated_middlewares
-
-    # TODO: Curren
-    async def __call__(self) -> aiohttp.ClientResponse: 
+    # Rate limiting is baked into request sending instead of being used as a middleware to ensure that
+    # rate limiting always happens as last step before request.
+    async def _final_handler(self) -> aiohttp.ClientResponse: 
         '''
-        Send the request the request object represents
+        Send a rate limited request    
         '''
 
-        session: aiohttp.ClientSession = self.session
+        session: aiohttp.ClientSession = self._session
+        rate_limiter: BaseRateLimiter = self._rate_limiter
+        parameters: dict = self._parameters
+        
+        while True:
+            wait_for: float = await rate_limiter.compute_wait_for(parameters)
+            if wait_for <= 0:
+                break
+            await asyncio.sleep(wait_for)
+
 
         async with session.get(url=self.url) as resp:
+            await rate_limiter.sync(wait_for, parameters)
             return resp
         
     
     @staticmethod
     def wrap(middleware, handler):
-    
-        def new_handler():
+        
+        def new_handler(re):
             response = middleware(handler)
             return response
         return new_handler
+
 
     async def _build_request(self):
         '''
@@ -83,10 +90,20 @@ class RequestObject():
         '''
 
         self._initiate_middlewares()
-        final_handler = self._send_request
+        final_handler = self._final_handler
         middlewares = self.middlewares.reverse()
-        for middleware in self.middlewares:
-            final_handler = ...
+        for middleware in middlewares:
+
+            def decorator(func):
+                @wraps(func)
+                def new_handler(request: RequestObject):
+                    response = middleware(request, final_handler)
+                    return response
+                return new_handler
+            
+            final_handler = decorator
+
+        return final_handler()
 
         
 

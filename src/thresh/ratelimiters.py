@@ -35,7 +35,7 @@ class BaseRateLimiter(ABC):
     '''
     Base class for rate limiters, stipulating that any rate limiter shall be able
     to load its own state, compute a wait for, and be able to sync itself. 
-    An async __call__() method should also be defined for use as as middleware. 
+    Use SYNC_FLAG to indicate whether syncing is required for that request.
     '''
 
     @abstractmethod
@@ -43,9 +43,16 @@ class BaseRateLimiter(ABC):
         ...
 
     @abstractmethod
-    async def sync_limiter(self, parameters: dict) -> None:
+    async def sync(self, wait_for: float, parameters: dict) -> None:
         ...
 
+    @property
+    @staticmethod
+    def SYNC_FLAG():
+        '''
+        Flag response for syncing
+        '''
+        return -1
 
 
 
@@ -54,10 +61,10 @@ class RiotAPIRateLimiter(BaseRateLimiter):
     Default rate limiter for thresh, limiting requests purely by parsing response headers.
     '''
     def default_index_value():
-        return (0,0,0,0, 0)
+        return (0,0,0,0,0)
 
     def __init__(self):
-        self.targets_to_update: list = {}
+        self.targets_to_update: dict = {}
         self._index = defaultdict(RiotAPIRateLimiter.default_index_value)
         self._base_targets = [
             ("app", 0),  
@@ -66,7 +73,8 @@ class RiotAPIRateLimiter(BaseRateLimiter):
             ("method", 1)
         ]
     
-
+    
+        
 
     # TODO: add error logging
     # TODO: add mechanism for removing stale targets
@@ -108,7 +116,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
                 for pinging_target in pinging_targets:
                     self.targets_to_update[pinging_target] = request_time 
                     self._index[pinging_target] = (0, 0, 0, 0, time.time()) 
-                wait_for = -1
+                wait_for = self.SYNC_FLAG
             for r_target in requesting_targets:
                 count, *values = self._index[r_target]
                 self._index[r_target] = (count + 1, *values)        
@@ -119,14 +127,16 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         return wait_for
     
 
-    async def sync_limiter(self, parameters: dict, headers) -> None:
+    async def sync(self, wait_for: float, parameters: dict, headers) -> None:
     
         # dict[
         # tuple(scope, id, etc) : tuple(limit, count, upper_bound, latency)
         # ]
 
         # [app, 0, ...] = limit, count, upper_bound
-
+        if wait_for != self.SYNC_FLAG:
+            return
+        
         header_limits = {
             "app": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-App-Rate-Limit").split(",")],
             "method": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-Method-Rate-Limit").split(",")]
@@ -171,7 +181,6 @@ class RiotAPIRateLimiter(BaseRateLimiter):
                 response_time - request_time, # latency  
                 0
             )
-
 
         self.targets_to_update = {}
         

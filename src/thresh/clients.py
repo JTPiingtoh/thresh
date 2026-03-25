@@ -47,7 +47,7 @@ class RiotAPIClient():
   
 
 
-
+    #TODO: remove this 
     @staticmethod
     def riot_api_endpoint(base_url: str):
         '''
@@ -73,17 +73,16 @@ class RiotAPIClient():
         caller_args = caller_frame.f_locals
         caller_name = caller_frame.f_code.co_name
         url: Final[str]
-        try:
-            
+    
 
-            request_object = RequestObject(
-                base_url=url, 
-                parameters=caller_args, 
-                session=self._session,
-                endpoint_name=caller_name
-            )
+        request_object = RequestObject(
+            base_url=url, 
+            parameters=caller_args, 
+            session=self._session,
+            endpoint_name=caller_name
+        )
 
-            return await request_object.send_request()
+        return await request_object.send_request()
         
         
         
