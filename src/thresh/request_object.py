@@ -6,8 +6,7 @@ from functools import wraps
 import aiohttp
 
 from thresh.ratelimiters import BaseRateLimiter
-from thresh.extras.dependancy_injectors import inject_from
-
+from thresh.middlewares import retry_middleware
 
 
 class RequestObject():
@@ -41,7 +40,10 @@ class RequestObject():
     @property
     def middlewares(self) -> list:
         
-        for middleware in self._middlewares:
+        # add default middlewares
+        middlewares = self._middlewares + [retry_middleware]
+
+        for middleware in middlewares:
             if not inspect.isclass(middleware):
                 continue
             try:
@@ -49,7 +51,7 @@ class RequestObject():
             except AttributeError:
                 raise AttributeError(f"middleware class {middleware} must have a __call__ method.")
 
-        return self._middlewares
+        return middlewares
     
 
     # Rate limiting is baked into request sending instead of being used as a middleware to ensure that

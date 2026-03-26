@@ -1,6 +1,5 @@
 import asyncio
 from typing import Callable
-from abc import ABC, abstractmethod
 
 import aiohttp
 from aiohttp import ClientRequest, ClientHandlerType, ClientResponse
@@ -19,7 +18,7 @@ async def retry_middleware(request_object: RequestObject, next: Callable):
     return response
 
 
-async def http
+
     
 
 

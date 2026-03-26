@@ -11,7 +11,7 @@ from thresh.ratelimiters import RiotAPIRateLimiter, BaseRateLimiter
 from thresh.extras.aiohttp_closed_event import create_aiohttp_closed_event
 from thresh.middlewares import construct_rate_limit_middleware
 from thresh.request_object import RequestObject
-from thresh.middlewares import request_rate_limit_middleware
+from thresh.middlewares import retry_middleware
 
 class RiotAPIClient():
 
@@ -21,7 +21,6 @@ class RiotAPIClient():
     def __init__(self, session: aiohttp.ClientSession, rate_limiter: BaseRateLimiter):
         self._session = session
         self._rate_limiter = rate_limiter
-        self.default_middlewares = [request_rate_limit_middleware] # TODO: add other middlewares
     
 
     @classmethod
@@ -67,18 +66,18 @@ class RiotAPIClient():
         return decorator
     
 
-    async def build_request_object(self, base_url: str) -> aiohttp.ClientResponse:
+    async def build_request_object(self, base_url: str, middlewares: list[Callable] = None) -> aiohttp.ClientResponse:
 
         caller_frame = inspect.currentframe().f_back
         caller_args = caller_frame.f_locals
         caller_name = caller_frame.f_code.co_name
-        url: Final[str]
-    
 
         request_object = RequestObject(
-            base_url=url, 
+            base_url=base_url, 
             parameters=caller_args, 
             session=self._session,
+            rate_limiter=self._rate_limiter,
+            middlewares=middlewares,
             endpoint_name=caller_name
         )
 
@@ -93,12 +92,13 @@ class RiotAPIClient():
     async def get_from_test_url(
             self, 
             *,
-            region: str | None = None, 
-            tier: str | None = None, 
-            division: str | None = None, 
+            region: str, 
+            tier: str, 
+            division: str, 
+            middlewares: list[Callable] | None
         ):
 
-        return self.build_request_object(base_url="http://127.0.0.1:5000/{region}/{tier}/{division}")
+        return self.build_request_object(base_url="http://127.0.0.1:5000/{region}/{tier}/{division}", middlewares=middlewares)
 
 
     @riot_api_endpoint("https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}?page={page}")
