@@ -6,7 +6,6 @@ from functools import wraps
 import aiohttp
 
 from thresh.ratelimiters import BaseRateLimiter
-from thresh.middlewares import retry_middleware
 
 
 class RequestObject():
@@ -36,44 +35,16 @@ class RequestObject():
         except KeyError as e:          
             raise ValueError(f"{self._endpoint_name} is missing argument for {e}") 
         
-
-    @property
-    def middlewares(self) -> list:
-        
-        # add default middlewares
-        middlewares = self._middlewares + [retry_middleware]
-
-        for middleware in middlewares:
-            if not inspect.isclass(middleware):
-                continue
-            try:
-                middleware.__call__
-            except AttributeError:
-                raise AttributeError(f"middleware class {middleware} must have a __call__ method.")
-
-        return middlewares
     
 
     # Rate limiting is baked into request sending instead of being used as a middleware to ensure that
     # rate limiting always happens as last step before request.
     async def _final_handler(self) -> aiohttp.ClientResponse: 
         '''
-        Send a rate limited request    
+        Send the request this object represents    
         '''
-
         session: aiohttp.ClientSession = self._session
-        rate_limiter: BaseRateLimiter = self._rate_limiter
-        parameters: dict = self._parameters
-        
-        while True:
-            wait_for: float = await rate_limiter.compute_wait_for(parameters)
-            if wait_for <= 0:
-                break
-            await asyncio.sleep(wait_for)
-
-
         async with session.get(url=self.url) as resp:
-            await rate_limiter.sync(wait_for, parameters)
             return resp
         
     
@@ -86,36 +57,26 @@ class RequestObject():
         return new_handler
 
 
-    async def _build_request(self):
+    @property
+    def reversed_middlewares(self):
+        middlewares = self._middlewares
+        middlewares.reverse()
+        return middlewares
+
+    async def send_request(self):
         '''
         Wrap request in middlewares
         '''
 
-        self._initiate_middlewares()
         final_handler = self._final_handler
-        middlewares = self.middlewares.reverse()
-        for middleware in middlewares:
-
-            def decorator(func):
-                @wraps(func)
-                def new_handler(request: RequestObject):
-                    response = middleware(request, final_handler)
-                    return response
-                return new_handler
+        for middleware in self.reversed_middlewares:
             
-            final_handler = decorator
+            @wraps(final_handler)
+            def new_handler(request: RequestObject):
+                print("new")
+                response = middleware(request, final_handler)
+                return response
+            
+            final_handler = new_handler
 
-        return final_handler()
-
-        
-
-    
-    
-
-
-
-# Similar to request factory
-class MultiRequestObject():
-    ...
-
-
+        return await final_handler(self)

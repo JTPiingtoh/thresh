@@ -2,6 +2,7 @@ import asyncio
 
 from contextlib import asynccontextmanager
 from typing import Final, AsyncIterator, Iterable, Generator, Callable
+from types import FrameType
 from functools import wraps
 import inspect
 
@@ -9,18 +10,18 @@ import aiohttp
 
 from thresh.ratelimiters import RiotAPIRateLimiter, BaseRateLimiter
 from thresh.extras.aiohttp_closed_event import create_aiohttp_closed_event
-from thresh.middlewares import construct_rate_limit_middleware
+from thresh._middlewares import _retry_middleware, _ratelimit_middleware
 from thresh.request_object import RequestObject
-from thresh.middlewares import retry_middleware
 
 class RiotAPIClient():
 
     _session: Final[aiohttp.ClientSession]
     _rate_limiter: Final[BaseRateLimiter]
 
-    def __init__(self, session: aiohttp.ClientSession, rate_limiter: BaseRateLimiter):
+    def __init__(self, session: aiohttp.ClientSession, rate_limiter: BaseRateLimiter, middlewares: list[Callable] | None = None):
         self._session = session
         self._rate_limiter = rate_limiter
+        self._middlewares = middlewares
     
 
     @classmethod
@@ -28,56 +29,70 @@ class RiotAPIClient():
     async def connect(
         cls, 
         session: aiohttp.ClientSession | None = None, 
-        rate_limiter: BaseRateLimiter | None = None
+        rate_limiter: BaseRateLimiter | None = None,
+        middlewares: list[Callable] | None = None
         ) -> AsyncIterator["RiotAPIClient"]:
 
         if session == None:
-            session: aiohttp.ClientSession = aiohttp.ClientSession()
+            session = aiohttp.ClientSession()
         if rate_limiter == None:
             rate_limiter = RiotAPIRateLimiter()
+        
 
         try:
-            yield cls(session, rate_limiter) 
+            yield cls(session, rate_limiter, middlewares) 
 
         finally:
             all_is_lost: asyncio.Event = create_aiohttp_closed_event(session)
             await all_is_lost.wait()
             await session.close()
   
-
-
-    #TODO: remove this 
-    @staticmethod
-    def riot_api_endpoint(base_url: str):
-        '''
-        All client endpoint APIs should be decorated with this function.
-        Creates a request_factory to easily create multiple requests for a given endpoint, and
-        calls handle_request().
-        '''
-        def decorator(func):
-            @wraps(func)
-            async def wrapper(self: RiotAPIClient, **kwargs):
-                #TODO: add middlewares
-                request_object: RequestObject = RequestObject(kwargs, base_url, self._session, self._rate_limiter) 
-                response: aiohttp.ClientResponse = await request_object.handle_request()
-                
-                return response            
-            return wrapper
-        return decorator
     
 
-    async def build_request_object(self, base_url: str, middlewares: list[Callable] = None) -> aiohttp.ClientResponse:
+    async def _build_request_object(self, base_url: str, middlewares: list[Callable] | None = None) -> aiohttp.ClientResponse:
 
-        caller_frame = inspect.currentframe().f_back
+
+        cur_frame: FrameType | None = inspect.currentframe()
+        caller_frame: FrameType | None
+
+        if cur_frame:
+            caller_frame = cur_frame.f_back
+
+        if not caller_frame:
+            raise RuntimeError("_build_request_object was outside of a function body.")
         caller_args = caller_frame.f_locals
         caller_name = caller_frame.f_code.co_name
+
+        
+        default_middlewares: list[Callable] = [_ratelimit_middleware]
+        _middlewares: list[Callable] | None
+
+        if middlewares:
+            _middlewares = middlewares
+        else:
+            _middlewares = self._middlewares
+
+        if _middlewares:
+            _middlewares += default_middlewares
+        else:
+            _middlewares = default_middlewares
+
+
+        for _middleware in _middlewares:
+            if not inspect.isclass(_middleware):
+                continue
+            try:
+                _middleware.__call__
+            except AttributeError:
+                raise AttributeError(f"middleware class {_middleware} must have a __call__ method.")
+
 
         request_object = RequestObject(
             base_url=base_url, 
             parameters=caller_args, 
             session=self._session,
             rate_limiter=self._rate_limiter,
-            middlewares=middlewares,
+            middlewares=_middlewares,
             endpoint_name=caller_name
         )
 
@@ -85,23 +100,18 @@ class RiotAPIClient():
         
         
         
-
-
-    # @riot_api_endpoint("http://127.0.0.1:5000/{region}/{tier}/{division}")
     
     async def get_from_test_url(
             self, 
             *,
             region: str, 
             tier: str, 
-            division: str, 
-            middlewares: list[Callable] | None
+            division: str,
+            middlewares: list[Callable] | None = None,
         ):
+        return await self._build_request_object(base_url="http://127.0.0.1:5000/{region}/{tier}/{division}", middlewares=middlewares)
 
-        return self.build_request_object(base_url="http://127.0.0.1:5000/{region}/{tier}/{division}", middlewares=middlewares)
 
-
-    @riot_api_endpoint("https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}?page={page}")
     async def get_league_v4_entries_queue_tier_division(
         self,
         *,
@@ -110,6 +120,7 @@ class RiotAPIClient():
         tier,
         division,
         page,
+        middlewares
     ):
-        ...
+        return await self._build_request_object(base_url="https://{region}.api.riotgames.com/lol/league/v4/entries/{queue}/{tier}/{division}?page={page}", middlewares=middlewares)
 

@@ -46,14 +46,21 @@ class BaseRateLimiter(ABC):
     async def sync(self, wait_for: float, parameters: dict) -> None:
         ...
 
-    @property
     @staticmethod
+    @property
     def SYNC_FLAG():
         '''
         Flag response for syncing
         '''
         return -1
 
+    @staticmethod
+    @property
+    def NOT_WAIT_FLAG():
+        '''
+        Flag response for not waiting
+        '''
+        return -2
 
 
 class RiotAPIRateLimiter(BaseRateLimiter):
@@ -112,7 +119,10 @@ class RiotAPIRateLimiter(BaseRateLimiter):
                 requesting_targets.append(target)
 
         if wait_for <= 0:
-            if pinging_targets:
+
+            if not pinging_targets:
+                wait_for = self.NOT_WAIT_FLAG
+            else :
                 for pinging_target in pinging_targets:
                     self.targets_to_update[pinging_target] = request_time 
                     self._index[pinging_target] = (0, 0, 0, 0, time.time()) 

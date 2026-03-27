@@ -14,7 +14,7 @@ async def main():
         
     
         concurrent_start = time.time()
-        results = eagerly_concurrently_request(client.get_from_test_url, inputs, max_concurrent=200) 
+        results = eagerly_concurrently_request(client.get_from_test_url, inputs, max_concurrent=1) 
 
         async for result in results:
             ...
