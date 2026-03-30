@@ -86,7 +86,6 @@ class RiotAPIClient():
             except AttributeError:
                 raise AttributeError(f"middleware class {_middleware} must have a __call__ method.")
 
-
         request_object = RequestObject(
             base_url=base_url, 
             parameters=caller_args, 

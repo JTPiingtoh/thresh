@@ -8,20 +8,19 @@ from thresh.ratelimiters import BaseRateLimiter
 
 
 
-async def _ratelimit_middleware(request_object: RequestObject, next: callable) -> ClientResponse:
+async def _ratelimit_middleware(request_object: RequestObject, next: Callable) -> ClientResponse:
     
     rate_limiter: BaseRateLimiter = request_object._rate_limiter
     parameters: dict = request_object._parameters
 
     while True:
-        print("Wait")
         wait_for: float = await rate_limiter.compute_wait_for(parameters)
         if wait_for == rate_limiter.NOT_WAIT_FLAG or wait_for == rate_limiter.SYNC_FLAG:
             break
         await asyncio.sleep(wait_for)
 
     response: ClientResponse = await next(request_object)
-    await rate_limiter.sync(wait_for, parameters)
+    await rate_limiter.sync(wait_for, parameters, response.headers)
     return response
 
 

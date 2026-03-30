@@ -39,29 +39,34 @@ class RequestObject():
 
     # Rate limiting is baked into request sending instead of being used as a middleware to ensure that
     # rate limiting always happens as last step before request.
-    async def _final_handler(self) -> aiohttp.ClientResponse: 
+    @staticmethod
+    async def _final_handler(request_object: RequestObject) -> aiohttp.ClientResponse: 
         '''
         Send the request this object represents    
         '''
-        session: aiohttp.ClientSession = self._session
-        async with session.get(url=self.url) as resp:
+        session: aiohttp.ClientSession = request_object._session
+        async with session.get(url=request_object.url) as resp:
             return resp
         
-    
+
+    @property
+    def reversed_middlewares(self) -> list[Callable]:
+        
+        middlewares = self._middlewares
+        if not middlewares:
+            return middlewares
+        middlewares.reverse()
+        return middlewares
+
+
     @staticmethod
     def wrap(middleware, handler):
         
-        def new_handler(re):
-            response = middleware(handler)
+        async def new_handler(input):
+            response = await middleware(input, handler)
             return response
         return new_handler
 
-
-    @property
-    def reversed_middlewares(self):
-        middlewares = self._middlewares
-        middlewares.reverse()
-        return middlewares
 
     async def send_request(self):
         '''
@@ -69,14 +74,11 @@ class RequestObject():
         '''
 
         final_handler = self._final_handler
-        for middleware in self.reversed_middlewares:
+        reversed_middlewares = self.reversed_middlewares
+        if reversed_middlewares:
+            for middleware in reversed_middlewares:
+                # Note: wrapped used to avoid late bindings
+                final_handler = self.wrap(middleware, final_handler)
             
-            @wraps(final_handler)
-            def new_handler(request: RequestObject):
-                print("new")
-                response = middleware(request, final_handler)
-                return response
-            
-            final_handler = new_handler
 
         return await final_handler(self)
