@@ -57,6 +57,8 @@ class RiotAPIClient():
 
         if cur_frame:
             caller_frame = cur_frame.f_back
+        else:
+            raise RuntimeError("inspect.currentframe failed")
 
         if not caller_frame:
             raise RuntimeError("_build_request_object was outside of a function body.")
