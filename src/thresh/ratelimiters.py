@@ -12,8 +12,11 @@ class WaitFlags():
     CONFORMING = -1.0
     SYNC = -2.0
     @staticmethod
-    def conforming(wait_for: float):
-        return wait_for == WaitFlags.CONFORMING
+    def breakable(wait_for: float):
+        '''
+        Determines whether wait_for signifies that a request can be sent. 
+        '''
+        return wait_for == WaitFlags.CONFORMING or wait_for == WaitFlags.SYNC 
 
     @staticmethod
     def sync_required(wait_for: float):

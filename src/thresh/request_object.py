@@ -5,7 +5,6 @@ from functools import wraps
 
 import aiohttp
 # TODO: move ALL middleware handling to the client
-from thresh.ratelimiters import BaseRateLimiter
 
 
 class RequestObject():
@@ -15,14 +14,12 @@ class RequestObject():
         base_url: str,
         parameters: dict,
         session: aiohttp.ClientSession,
-        rate_limiter: BaseRateLimiter,
         middlewares: list[Callable],
         endpoint_name: str
         ):       
         self._base_url: Final[str] = base_url
         self._parameters: dict[str, int | str] = parameters        
         self._session: Final[aiohttp.ClientSession] = session
-        self._rate_limiter: Final[BaseRateLimiter] = rate_limiter
         self._middlewares: list[Callable] = middlewares
         # For more detailed tracebacks when using pipelines  
         self._endpoint_name: str = endpoint_name
@@ -37,17 +34,7 @@ class RequestObject():
         
     
 
-    # Rate limiting is baked into request sending instead of being used as a middleware to ensure that
-    # rate limiting always happens as last step before request.
-    @staticmethod
-    async def _final_handler(request_object: RequestObject) -> aiohttp.ClientResponse: 
-        '''
-        Send the request this object represents    
-        '''
-        session: aiohttp.ClientSession = request_object._session
-        async with session.get(url=request_object.url) as resp:
-            return resp
-        
+
 
     @property
     def region(self) -> str:
@@ -69,11 +56,22 @@ class RequestObject():
 
     @staticmethod
     def wrap(middleware, handler):
-        
-        async def new_handler(input):
-            response = await middleware(input, handler)
+        async def new_handler(request_object: RequestObject) -> aiohttp.ClientResponse:
+            response = await middleware(request_object, handler)
             return response
         return new_handler
+
+
+    # TODO: Currently has trust me bro pattern
+    @staticmethod
+    async def _final_handler(request_object: RequestObject) -> aiohttp.ClientResponse: 
+        '''
+        Send the request this object represents    
+        '''
+        session: aiohttp.ClientSession = request_object._session
+        async with session.get(url=request_object.url) as resp:
+            return resp
+        
 
 
     async def send_request(self):
