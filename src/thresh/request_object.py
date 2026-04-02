@@ -4,7 +4,7 @@ import inspect
 from functools import wraps
 
 import aiohttp
-
+# TODO: move ALL middleware handling to the client
 from thresh.ratelimiters import BaseRateLimiter
 
 
@@ -20,7 +20,7 @@ class RequestObject():
         endpoint_name: str
         ):       
         self._base_url: Final[str] = base_url
-        self._parameters: dict = parameters        
+        self._parameters: dict[str, int | str] = parameters        
         self._session: Final[aiohttp.ClientSession] = session
         self._rate_limiter: Final[BaseRateLimiter] = rate_limiter
         self._middlewares: list[Callable] = middlewares
@@ -48,6 +48,14 @@ class RequestObject():
         async with session.get(url=request_object.url) as resp:
             return resp
         
+
+    @property
+    def region(self) -> str:
+        region: str | int | None= self._parameters.get("region")
+        if not isinstance(region, str):
+            raise TypeError("RequestObject region must be a string")
+        return region
+
 
     @property
     def reversed_middlewares(self) -> list[Callable]:

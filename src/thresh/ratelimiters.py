@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from collections import defaultdict
 from abc import ABC, abstractmethod
 from multidict import CIMultiDictProxy
-from typing import Literal
+from typing import Literal, List
+
+from thresh.request_object import RequestObject
 
 class WaitFlags():
     CONFORMING = -1.0
@@ -18,10 +20,6 @@ class WaitFlags():
         return wait_for == WaitFlags.SYNC
         
 
-# TODO: make threadsafe
-limiter_state_cache = {}
-
-
 
 # TODO: add error logging
 # TODO: add mechanism for removing stale targets
@@ -33,11 +31,11 @@ class BaseRateLimiter(ABC):
     '''
 
     @abstractmethod
-    async def compute_wait_for(self, parameters: dict) -> float:
+    async def compute_wait_for(self, request_object: RequestObject) -> float:
         ...
 
     @abstractmethod
-    async def sync(self, parameters: dict, headers: CIMultiDictProxy[str]) -> None:
+    async def sync(self, request_object: RequestObject, headers: CIMultiDictProxy[str]) -> None:
         ...
 
 
@@ -46,28 +44,29 @@ class RiotAPIRateLimiter(BaseRateLimiter):
     '''
     Default rate limiter for thresh, limiting requests purely by parsing response headers.
     '''
-
     @staticmethod
-    def default_index_value():
+    def default_index_value() -> tuple[int, int, float, float, float]:
+        '''
+        default count, limit, window_expire, latency, pinged
+        '''
         return (0,0,0,0,0)
 
     def __init__(self):
-        self.targets_to_update: dict = {}
+        self.targets_to_update: dict[tuple[Literal['app', 'method'], int, str], float] = {}
         self._index = defaultdict(RiotAPIRateLimiter.default_index_value)
-        self._base_targets = [
+        self._base_targets: list[tuple[Literal['app', 'method'], int]] = [
             ("app", 0),  
             ("app", 1), 
             ("method", 0),
             ("method", 1)
         ]
     
-    
         
 
     # TODO: add error logging
     # TODO: add mechanism for removing stale targets
 
-    async def compute_wait_for(self, parameters: dict) -> float:
+    async def compute_wait_for(self, request_object: RequestObject) -> float:
 
         pinging_targets = []
         requesting_targets = []
@@ -76,7 +75,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         for base_target in self._base_targets:
 
-            target = *base_target, parameters["region"]
+            target = *base_target, request_object.region
             count, limit, window_expire, latency, pinged = self._index[target]
 
             
@@ -100,11 +99,11 @@ class RiotAPIRateLimiter(BaseRateLimiter):
             else :
                 for pinging_target in pinging_targets:
                     self.targets_to_update[pinging_target] = request_time 
-                    self._index[pinging_target] = (0, 0, 0, 0, time.time()) 
-                wait_for = self.SYNC_FLAG
+                    self._index[pinging_target] = (0, 0, 0, 0.0, time.time()) 
+                wait_for = WaitFlags.SYNC
             for r_target in requesting_targets:
-                count, *values = self._index[r_target]
-                self._index[r_target] = (count + 1, *values)        
+                count, limit, window_expire, latency, pinged = self._index[r_target]
+                self._index[r_target] = (count + 1, limit, window_expire, latency, pinged)        
 
 
             # if all targets complied, update. If a wait_for has been used,
@@ -112,39 +111,28 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         return wait_for
     
     # TODO: Fix for type checker
-    async def sync(self, parameters: dict, headers: CIMultiDictProxy[str]) -> None:    
-        # "method-count" : 0:120, 0:20
+    async def sync(self, request_object: RequestObject, headers: CIMultiDictProxy[str]) -> None:    
 
-        # x_app_rate_limit: list[str] =          
-        # x_method_rate_limit: list[str] =       
-        # x_app_rate_limit_count: list[str] =    
-        # x_method_rate_limit_count: list[str] = 
-        header_limits: dict[Literal["app", "method"], int | None] = {"app" : None, "method" : None}
-        header_counts: dict[Literal["app", "method"], int | None] = {"app" : None, "method" : None}
+        header_limits: dict[Literal["app", "method"], List[List[int]]]
+        header_counts: dict[Literal["app", "method"], List[List[int]]]
 
-        headers_list = [
-            headers.get("X-App-Rate-Limit"),
-            headers.get("X-Method-Rate-Limit"),
-            headers.get("X-App-Rate-Limit-Count"),
-            headers.get("X-Method-Rate-Limit-Count")
-        ]
+        def get_header(key: str) -> str:
+            value: str | None = headers.get(key)
+            if not value:
+                raise RuntimeError(f"Key {key} not found in response headers.")
+            return value
 
-        for header in headers_list:
-            if header == None:
-                raise KeyError("Response missing standard header counts")
 
         header_limits = {
-            "app": [[int(v) for v in rate_limit.split(":")] for rate_limit in x_app_rate_limit.split(",")],
-            "method": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-Method-Rate-Limit").split(",")]
+            "app": [[int(v) for v in rate_limit.split(":")] for rate_limit in get_header("X-App-Rate-Limit").split(",")],
+            "method": [[int(v) for v in rate_limit.split(":")] for rate_limit in get_header("X-Method-Rate-Limit").split(",")]
         }
 
         header_counts = {
-            "app": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-App-Rate-Limit-Count").split(",")],
-            "method": [[int(v) for v in rate_limit.split(":")] for rate_limit in headers.get("X-Method-Rate-Limit-Count").split(",")]
+            "app": [[int(v) for v in rate_limit.split(":")] for rate_limit in get_header("X-App-Rate-Limit-Count").split(",")],
+            "method": [[int(v) for v in rate_limit.split(":")] for rate_limit in get_header("X-Method-Rate-Limit-Count").split(",")]
         }
         
-
-
         if len(header_limits) != len(header_counts):
             raise RuntimeError("Limit and counts headers are not of equal length")
 
@@ -160,10 +148,10 @@ class RiotAPIRateLimiter(BaseRateLimiter):
         # targets_to_update
 
         for base_target in self._base_targets:
-            
-            target = *base_target, parameters["region"]
+            region: str = request_object.region
+            target: tuple[Literal['app', 'method'], int, str] = *base_target, region
             try:
-                request_time = self.targets_to_update[target]
+                request_time: float = self.targets_to_update[target]
             except KeyError:
                 continue
 
@@ -177,7 +165,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
                 header_limits[scope][id][0],
                 header_limits[scope][id][1] + response_time, # window expires
                 response_time - request_time, # latency  
-                0
+                0.0
             )
 
         self.targets_to_update = {}
