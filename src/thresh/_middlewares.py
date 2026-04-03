@@ -22,6 +22,7 @@ class RateLimitMiddleware:
             await asyncio.sleep(wait_for)
 
         response: ClientResponse = await next(request_object)
+        
         if WaitFlags.sync_required(wait_for):
             try:
                 await rate_limiter.sync(request_object, response.headers)

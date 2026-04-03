@@ -50,7 +50,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
     @staticmethod
     def default_index_value() -> tuple[int, int, float, float, float]:
         '''
-        default count, limit, window_expire, latency, pinged
+        default count, limit, window_expire, latency, pinged, nascent
         '''
         return (0,0,0,0,0)
 
@@ -87,9 +87,9 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
             if pinging:
                 wait_for = max(wait_for, 0.1)
-            # will always be true in uninitited index
             elif request_time > window_expire:
                 pinging_targets.append(target)
+ 
             elif count >= limit or request_time > window_expire - latency:
                 wait_for = max(wait_for, window_expire - request_time)
             else:
@@ -99,13 +99,13 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
             if not pinging_targets:
                 wait_for = WaitFlags.CONFORMING
-            else :
+            else:
                 for pinging_target in pinging_targets:
                     self.targets_to_update[pinging_target] = request_time 
                     self._index[pinging_target] = (0, 0, 0, 0.0, time.time()) 
                 wait_for = WaitFlags.SYNC
             for r_target in requesting_targets:
-                count, limit, window_expire, latency, pinged = self._index[r_target]
+                count, limit, window_expire, latency, pinged= self._index[r_target]
                 self._index[r_target] = (count + 1, limit, window_expire, latency, pinged)        
 
 
@@ -160,6 +160,7 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
             scope, id, *others = target
             if id >= len(header_limits[scope]):
+                # TODO: Does this makes sense with nascency?
                 self._index[scope, id,  *others] = (0, 100, 3_600, 0, 0)
                 continue
 
@@ -173,11 +174,6 @@ class RiotAPIRateLimiter(BaseRateLimiter):
 
         self.targets_to_update = {}
         
-
-        #BUG: If an error occurs in this coroutine due to the code above, this will never get called! e.g a value error where target unpacking 
-        # gives the incorrect number of values.
-        # The ratelimiter state is still saved during shutdown however, meaing the invalid targets also get saved, and can raise the error again!
-
         return
     
 
