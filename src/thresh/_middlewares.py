@@ -39,9 +39,31 @@ class RateLimitMiddleware:
                             
         return response
 
+# This is intended for single requests. 
+class HTTPErrorMiddleware():
+    def __init__(self, max_retries: int = 3):
+        self.max_retries = max_retries
 
-async def _http_error_middleware(self, request_object: RequestObject, next: Middleware) -> ClientResponse:
-    response: ClientResponse = await next(request_object)
+    
+    async def _http_error_middleware(self, request_object: RequestObject, next: Middleware) -> ClientResponse:
+        
+        max_retries: int = self.max_retries 
+        response: ClientResponse = await next(request_object)
+
+        status: int = response.status
+
+        for attempt in range(max_retries):
+            wait_for: float = float(((2 ** attempt) - 1) * 0.5)
+            await asyncio.sleep(wait_for)
+
+            if status <= 400 & status < 500 & status != 429:
+                break
+
+
+        if status == 429:
+            ...
+
+        return response
     
 
 
