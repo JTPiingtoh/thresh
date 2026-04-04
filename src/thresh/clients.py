@@ -17,7 +17,14 @@ class RiotAPIClient():
     _session: Final[aiohttp.ClientSession]
     _rate_limiter: Final[BaseRateLimiter]
 
-    def __init__(self, session: aiohttp.ClientSession, rate_limiter: BaseRateLimiter, middlewares: list[Callable] | None = None):
+    def __init__(
+            self, 
+            api_key: str,
+            session: aiohttp.ClientSession, 
+            rate_limiter: BaseRateLimiter, 
+            middlewares: list[Callable] | None = None
+        ):
+        self.api_key = api_key
         self._session = session
         self._rate_limiter = rate_limiter
         self._middlewares = middlewares
@@ -27,9 +34,10 @@ class RiotAPIClient():
     @asynccontextmanager
     async def connect(
         cls, 
+        api_key: str,
         session: aiohttp.ClientSession | None = None, 
         rate_limiter: BaseRateLimiter | None = None,
-        middlewares: list[Callable] | None = None
+        middlewares: list[Callable] | None = None,
         ) -> AsyncIterator["RiotAPIClient"]:
 
         if session == None:
@@ -39,7 +47,7 @@ class RiotAPIClient():
         
 
         try:
-            yield cls(session, rate_limiter, middlewares) 
+            yield cls(api_key, session, rate_limiter, middlewares) 
 
         finally:
             all_is_lost: asyncio.Event = create_aiohttp_closed_event(session)
@@ -75,7 +83,7 @@ class RiotAPIClient():
             request_middlewares = client_middlewares
 
         if request_middlewares:
-            request_middlewares += default_middlewares
+            request_middlewares = default_middlewares + request_middlewares
         else:
             request_middlewares = default_middlewares
 
@@ -84,12 +92,12 @@ class RiotAPIClient():
             parameters=caller_args, 
             session=self._session,
             middlewares=request_middlewares,
-            endpoint_name=caller_name
+            endpoint_name=caller_name, 
+            api_key=self.api_key
         )
 
         return await request_object.send_request()
-        
-    
+            
         
     
     async def get_from_test_url(

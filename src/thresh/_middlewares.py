@@ -3,33 +3,47 @@ from typing import Callable
 
 from aiohttp import ClientResponse
 from thresh.request_object import RequestObject
-from thresh.ratelimiters import BaseRateLimiter, WaitFlags
+from thresh.ratelimiters import BaseRateLimiter, WaitFlags, RateLimitDecision
+
+from typing import Callable, Awaitable
 
 
+Middleware = Callable[[RequestObject], Awaitable[ClientResponse]]
 
 class RateLimitMiddleware:
     def __init__(self, rate_limiter: BaseRateLimiter) -> None:
         self.rate_limiter = rate_limiter
 
-    async def __call__(self, request_object: RequestObject, next: Callable) -> ClientResponse:
+    async def __call__(self, request_object: RequestObject, next: Middleware) -> ClientResponse:
         
         rate_limiter: BaseRateLimiter = self.rate_limiter
 
         while True:
-            wait_for: float = await rate_limiter.compute_wait_for(request_object)
-            if WaitFlags.breakable(wait_for=wait_for):
+            decision: RateLimitDecision = await rate_limiter.test_compliancy(request_object)
+            if decision.is_compliant:
                 break
-            await asyncio.sleep(wait_for)
-
-        response: ClientResponse = await next(request_object)
+            await asyncio.sleep(decision.retry_after)
         
-        if WaitFlags.sync_required(wait_for):
-            try:
+        response: ClientResponse = await next(request_object)
+
+        try:
+        # Log 429 and limiter state, check header to retry
+            if response.status == 429:
+                await rate_limiter.handle_exceeded(request_object, response.headers)
+
+
+            elif decision.should_sync:
                 await rate_limiter.sync(request_object, response.headers)
-            except AttributeError as e:
-                print("http response lacks headers")
-                raise            
+        except AttributeError as e:
+            raise RuntimeError("http response lacks headers")
+                            
         return response
+
+
+async def _http_error_middleware(self, request_object: RequestObject, next: Middleware) -> ClientResponse:
+    response: ClientResponse = await next(request_object)
+    
+
 
 
 async def _retry_middleware(request_object: RequestObject, next: Callable) -> ClientResponse:

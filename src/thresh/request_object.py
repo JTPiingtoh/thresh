@@ -6,6 +6,7 @@ from functools import wraps
 import aiohttp
 # TODO: move ALL middleware handling to the client
 
+from thresh.typing import Region
 
 class RequestObject():
 
@@ -15,7 +16,8 @@ class RequestObject():
         parameters: dict,
         session: aiohttp.ClientSession,
         middlewares: list[Callable],
-        endpoint_name: str
+        endpoint_name: str,
+        api_key: str
         ):       
         self._base_url: Final[str] = base_url
         self._parameters: dict[str, int | str] = parameters        
@@ -23,6 +25,7 @@ class RequestObject():
         self._middlewares: list[Callable] = middlewares
         # For more detailed tracebacks when using pipelines  
         self._endpoint_name: str = endpoint_name
+        self.api_key: str = api_key
 
 
     @property
@@ -34,11 +37,9 @@ class RequestObject():
         
     
 
-
-
     @property
-    def region(self) -> str:
-        region: str | int | None= self._parameters.get("region")
+    def region(self) -> Region:
+        region: Region | int | None = self._parameters.get("region")
         if not isinstance(region, str):
             raise TypeError("RequestObject region must be a string")
         return region
@@ -68,11 +69,16 @@ class RequestObject():
         '''
         Send the request this object represents    
         '''
+
+        headers = {
+        "Accept-Language": "en-GB,en;q=0.9,en-US;q=0.8",
+        "Accept-Charset": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Riot-Token": request_object.api_key
+        }
         session: aiohttp.ClientSession = request_object._session
-        async with session.get(url=request_object.url) as resp:
+        async with session.get(url=request_object.url, headers=headers) as resp:
             return resp
         
-
 
     async def send_request(self):
         '''

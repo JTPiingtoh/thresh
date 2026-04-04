@@ -1,11 +1,19 @@
+
 import asyncio
 import time
 
 from thresh.clients import RiotAPIClient
 from thresh.concurrency import concurrently_request, eagerly_concurrently_request
 
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
+api_key: str = os.getenv("API_KEY")
+
 async def main():
-    async with RiotAPIClient.connect() as client:
+    async with RiotAPIClient.connect(api_key=api_key) as client:
         
         parameters = {"region": "euw1", "tier": "DIAMOND", "division": "I"}
         inputs = [parameters for _ in range(200)]
